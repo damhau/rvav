@@ -75,9 +75,10 @@ func checkProperties(props map[string]string, ptr string) []api.FieldError {
 	return errs
 }
 
-// AdminProjects lists projects for those who read every project's settings.
+// AdminProjects lists projects for those who read every project's
+// settings or placement.
 func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search string, archived bool) ([]api.AdminProject, error) {
-	if !p.Everywhere(auth.ProjectSettingsRead) {
+	if !seesPlacement(p, "") {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AdminProjects(ctx, search, archived)
@@ -125,7 +126,8 @@ func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string
 	if err != nil {
 		return api.AdminProject{}, err
 	}
-	if !p.In(auth.ProjectSettingsRead, pr.ID) {
+	// The page that holds a project's placement is this project's.
+	if !seesPlacement(p, pr.ID) {
 		return api.AdminProject{}, ErrForbidden
 	}
 	return presentAdminProject(pr, p), nil

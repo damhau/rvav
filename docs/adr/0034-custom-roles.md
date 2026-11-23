@@ -61,7 +61,7 @@ used, with the built-in roles unchanged.
 | `project.settings.read` | P | See the project's administration: placement, quotas, the policies that apply; for all of rvav, every project's. | admin, auditor, project-admin |
 | `project.update` | P | Change the project's details and environments, or archive it. | admin |
 | `project.quotas.manage` | P | Set the project's quotas. | admin |
-| `placement.manage` | P | Change the project's placement rules. | admin |
+| `placement.manage` | P | See and change the project's placement rules and OUs, on its page (#212). | admin |
 | `audit.read` | P | Read the audit log: the project's events, or for all of rvav every event. | admin, auditor, project-admin |
 | `day2.<group>`, `day2.<group>:<action>` | P | Run the day-2 action when no policy decides it (below). | none |
 | `approval.read_all` | R | See every approval, and the questions and answers of composites' waits for a person. | admin, auditor |

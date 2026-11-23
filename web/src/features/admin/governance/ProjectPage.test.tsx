@@ -220,6 +220,31 @@ describe("a project's placement and quotas", () => {
     expect(await screen.findByText("OU saved")).toBeInTheDocument();
   });
 
+  it("opens the Placement tab for a role that only places the project's VMs, and no Quotas tab (#212)", async () => {
+    localStorage.setItem("rvav.mock.as", "placement-manager");
+    resetDb();
+    const user = userEvent.setup();
+    renderApp("/");
+    const nav = await screen.findByRole("navigation", { name: "Main" }, { timeout: 5000 });
+    const admin = within(nav).getByRole("group", { name: "Administration" });
+    await user.click(within(admin).getByRole("link", { name: "Projects" }));
+    const yours = await screen.findByRole("region", { name: "Your projects" });
+    await user.click(within(yours).getByRole("link", { name: "Web Platform" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Web Platform" })).toBeInTheDocument();
+    const tabs = screen.getByRole("tablist", { name: "Project sections" });
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Members", "Placement", "Details"]);
+    await user.click(within(tabs).getByRole("tab", { name: "Placement" }));
+    const rules = await screen.findByRole("region", { name: "Placement rules" });
+    expect(await within(rules).findAllByRole("button", { name: /^Actions for the rule of priority/ })).not.toHaveLength(
+      0,
+    );
+    expect(await screen.findByRole("region", { name: "Active Directory" })).toBeInTheDocument();
+  });
+
   it("says in a toast, not by a field, that Active Directory didn't answer", async () => {
     adminState(db).integrations.ad!.settings.url = "ldaps://unreachable.corp.example";
     const user = userEvent.setup();

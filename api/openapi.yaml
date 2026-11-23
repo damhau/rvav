@@ -3299,6 +3299,7 @@ paths:
       tags: [admin]
       operationId: listAdminProjects
       summary: Every project, archived ones on request, with member counts
+      description: With `project.settings.read` or `placement.manage` for all of rvav.
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - name: archived
@@ -3340,6 +3341,9 @@ paths:
       tags: [admin]
       operationId: getAdminProject
       summary: A project with its settings
+      description: |
+        With `project.settings.read` or `placement.manage` in the project:
+        the page of its placement is the project's.
       responses:
         "200":
           description: OK
@@ -3385,7 +3389,8 @@ paths:
         `audit.read`, `infrastructure.read`, `infrastructure.manage`,
         `policies.read`, `policies.manage`, `extensibility.read`,
         `extensibility.manage` or `import.manage`. Listing projects with
-        their settings (`listAdminProjects`) takes `project.settings.read`.
+        their settings (`listAdminProjects`) takes `project.settings.read`
+        or `placement.manage`.
       parameters:
         - name: archived
           in: query
@@ -3815,6 +3820,7 @@ paths:
       tags: [admin]
       operationId: listPlacementRules
       summary: Placement rules, of a project or all
+      description: With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQuery" }
       responses:
@@ -3884,7 +3890,8 @@ paths:
       description: |
         With project_id, the rows that may apply to the project: its own and
         those for every project, by environment or in any. Without it, every
-        row (ADR-0064).
+        row (ADR-0064). With `project.settings.read` or `placement.manage` in
+        the project, or for all of rvav without project_id.
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQuery" }
       responses:
@@ -3968,7 +3975,7 @@ paths:
       tags: [admin]
       operationId: previewPlacement
       summary: What a project and environment can use now
-      description: The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+      description: The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
         - name: environment

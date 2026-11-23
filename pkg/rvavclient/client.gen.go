@@ -14241,7 +14241,8 @@ type ClientInterface interface {
 	//
 	// With project_id, the rows that may apply to the project: its own and
 	// those for every project, by environment or in any. Without it, every
-	// row (ADR-0064).
+	// row (ADR-0064). With `project.settings.read` or `placement.manage` in
+	// the project, or for all of rvav without project_id.
 	//
 	// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
 	ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16039,12 +16040,14 @@ type ClientInterface interface {
 
 	// PreviewPlacement What a project and environment can use now
 	//
-	// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+	// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
 	//
 	// Corresponds with GET /admin/placement-preview (the `PreviewPlacement` operationId).
 	PreviewPlacement(ctx context.Context, params *PreviewPlacementParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPlacementRules Placement rules, of a project or all
+	//
+	// With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
 	//
 	// Corresponds with GET /admin/placement-rules (the `ListPlacementRules` operationId).
 	ListPlacementRules(ctx context.Context, params *ListPlacementRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16117,12 +16120,15 @@ type ClientInterface interface {
 	// `audit.read`, `infrastructure.read`, `infrastructure.manage`,
 	// `policies.read`, `policies.manage`, `extensibility.read`,
 	// `extensibility.manage` or `import.manage`. Listing projects with
-	// their settings (`listAdminProjects`) takes `project.settings.read`.
+	// their settings (`listAdminProjects`) takes `project.settings.read`
+	// or `placement.manage`.
 	//
 	// Corresponds with GET /admin/project-names (the `ListProjectNames` operationId).
 	ListProjectNames(ctx context.Context, params *ListProjectNamesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAdminProjects Every project, archived ones on request, with member counts
+	//
+	// With `project.settings.read` or `placement.manage` for all of rvav.
 	//
 	// Corresponds with GET /admin/projects (the `ListAdminProjects` operationId).
 	ListAdminProjects(ctx context.Context, params *ListAdminProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16142,6 +16148,9 @@ type ClientInterface interface {
 	CreateProject(ctx context.Context, body CreateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAdminProject A project with its settings
+	//
+	// With `project.settings.read` or `placement.manage` in the project:
+	// the page of its placement is the project's.
 	//
 	// Corresponds with GET /admin/projects/{projectId} (the `GetAdminProject` operationId).
 	GetAdminProject(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18309,7 +18318,8 @@ func (c *Client) ExplainAccess(ctx context.Context, params *ExplainAccessParams,
 //
 // With project_id, the rows that may apply to the project: its own and
 // those for every project, by environment or in any. Without it, every
-// row (ADR-0064).
+// row (ADR-0064). With `project.settings.read` or `placement.manage` in
+// the project, or for all of rvav without project_id.
 //
 // Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
 func (c *Client) ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22047,7 +22057,7 @@ func (c *Client) ListOnboardingVms(ctx context.Context, params *ListOnboardingVm
 
 // PreviewPlacement What a project and environment can use now
 //
-// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
 //
 // Corresponds with GET /admin/placement-preview (the `PreviewPlacement` operationId).
 func (c *Client) PreviewPlacement(ctx context.Context, params *PreviewPlacementParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22063,6 +22073,8 @@ func (c *Client) PreviewPlacement(ctx context.Context, params *PreviewPlacementP
 }
 
 // ListPlacementRules Placement rules, of a project or all
+//
+// With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
 //
 // Corresponds with GET /admin/placement-rules (the `ListPlacementRules` operationId).
 func (c *Client) ListPlacementRules(ctx context.Context, params *ListPlacementRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22225,7 +22237,8 @@ func (c *Client) ListProcesses(ctx context.Context, reqEditors ...RequestEditorF
 // `audit.read`, `infrastructure.read`, `infrastructure.manage`,
 // `policies.read`, `policies.manage`, `extensibility.read`,
 // `extensibility.manage` or `import.manage`. Listing projects with
-// their settings (`listAdminProjects`) takes `project.settings.read`.
+// their settings (`listAdminProjects`) takes `project.settings.read`
+// or `placement.manage`.
 //
 // Corresponds with GET /admin/project-names (the `ListProjectNames` operationId).
 func (c *Client) ListProjectNames(ctx context.Context, params *ListProjectNamesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22241,6 +22254,8 @@ func (c *Client) ListProjectNames(ctx context.Context, params *ListProjectNamesP
 }
 
 // ListAdminProjects Every project, archived ones on request, with member counts
+//
+// With `project.settings.read` or `placement.manage` for all of rvav.
 //
 // Corresponds with GET /admin/projects (the `ListAdminProjects` operationId).
 func (c *Client) ListAdminProjects(ctx context.Context, params *ListAdminProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22290,6 +22305,9 @@ func (c *Client) CreateProject(ctx context.Context, body CreateProjectJSONReques
 }
 
 // GetAdminProject A project with its settings
+//
+// With `project.settings.read` or `placement.manage` in the project:
+// the page of its placement is the project's.
 //
 // Corresponds with GET /admin/projects/{projectId} (the `GetAdminProject` operationId).
 func (c *Client) GetAdminProject(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -40528,7 +40546,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// With project_id, the rows that may apply to the project: its own and
 	// those for every project, by environment or in any. Without it, every
-	// row (ADR-0064).
+	// row (ADR-0064). With `project.settings.read` or `placement.manage` in
+	// the project, or for all of rvav without project_id.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42480,7 +42499,7 @@ type ClientWithResponsesInterface interface {
 
 	// PreviewPlacementWithResponse What a project and environment can use now
 	//
-	// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+	// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42488,6 +42507,8 @@ type ClientWithResponsesInterface interface {
 	PreviewPlacementWithResponse(ctx context.Context, params *PreviewPlacementParams, reqEditors ...RequestEditorFn) (*PreviewPlacementResponse, error)
 
 	// ListPlacementRulesWithResponse Placement rules, of a project or all
+	//
+	// With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42566,7 +42587,8 @@ type ClientWithResponsesInterface interface {
 	// `audit.read`, `infrastructure.read`, `infrastructure.manage`,
 	// `policies.read`, `policies.manage`, `extensibility.read`,
 	// `extensibility.manage` or `import.manage`. Listing projects with
-	// their settings (`listAdminProjects`) takes `project.settings.read`.
+	// their settings (`listAdminProjects`) takes `project.settings.read`
+	// or `placement.manage`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42574,6 +42596,8 @@ type ClientWithResponsesInterface interface {
 	ListProjectNamesWithResponse(ctx context.Context, params *ListProjectNamesParams, reqEditors ...RequestEditorFn) (*ListProjectNamesResponse, error)
 
 	// ListAdminProjectsWithResponse Every project, archived ones on request, with member counts
+	//
+	// With `project.settings.read` or `placement.manage` for all of rvav.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42595,6 +42619,9 @@ type ClientWithResponsesInterface interface {
 	CreateProjectWithResponse(ctx context.Context, body CreateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProjectResponse, error)
 
 	// GetAdminProjectWithResponse A project with its settings
+	//
+	// With `project.settings.read` or `placement.manage` in the project:
+	// the page of its placement is the project's.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -64942,7 +64969,8 @@ func (c *ClientWithResponses) ExplainAccessWithResponse(ctx context.Context, par
 //
 // With project_id, the rows that may apply to the project: its own and
 // those for every project, by environment or in any. Without it, every
-// row (ADR-0064).
+// row (ADR-0064). With `project.settings.read` or `placement.manage` in
+// the project, or for all of rvav without project_id.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68058,7 +68086,7 @@ func (c *ClientWithResponses) ListOnboardingVmsWithResponse(ctx context.Context,
 
 // PreviewPlacementWithResponse What a project and environment can use now
 //
-// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+// The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68072,6 +68100,8 @@ func (c *ClientWithResponses) PreviewPlacementWithResponse(ctx context.Context, 
 }
 
 // ListPlacementRulesWithResponse Placement rules, of a project or all
+//
+// With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68204,7 +68234,8 @@ func (c *ClientWithResponses) ListProcessesWithResponse(ctx context.Context, req
 // `audit.read`, `infrastructure.read`, `infrastructure.manage`,
 // `policies.read`, `policies.manage`, `extensibility.read`,
 // `extensibility.manage` or `import.manage`. Listing projects with
-// their settings (`listAdminProjects`) takes `project.settings.read`.
+// their settings (`listAdminProjects`) takes `project.settings.read`
+// or `placement.manage`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68218,6 +68249,8 @@ func (c *ClientWithResponses) ListProjectNamesWithResponse(ctx context.Context, 
 }
 
 // ListAdminProjectsWithResponse Every project, archived ones on request, with member counts
+//
+// With `project.settings.read` or `placement.manage` for all of rvav.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68257,6 +68290,9 @@ func (c *ClientWithResponses) CreateProjectWithResponse(ctx context.Context, bod
 }
 
 // GetAdminProjectWithResponse A project with its settings
+//
+// With `project.settings.read` or `placement.manage` in the project:
+// the page of its placement is the project's.
 //
 // Returns a wrapper object for the known response body format(s).
 //

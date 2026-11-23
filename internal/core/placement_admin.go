@@ -112,6 +112,14 @@ func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments, v
 	return sg, errs
 }
 
+// seesPlacement says whether p reads a project's placement, every
+// project's for "": those who read its settings, and those who change its
+// placement rules and OUs, so that a role made for that alone opens the
+// project's Placement tab (#212).
+func seesPlacement(p *auth.Principal, projectID string) bool {
+	return p.In(auth.ProjectSettingsRead, projectID) || p.In(auth.PlacementManage, projectID)
+}
+
 func (s *Service) PlacementRules(ctx context.Context, p *auth.Principal, projectID string) ([]api.PlacementRule, error) {
 	if projectID != "" {
 		proj, err := s.visibleProject(ctx, p, projectID)
@@ -120,7 +128,7 @@ func (s *Service) PlacementRules(ctx context.Context, p *auth.Principal, project
 		}
 		projectID = proj.ID
 	}
-	if !p.In(auth.ProjectSettingsRead, projectID) {
+	if !seesPlacement(p, projectID) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AllPlacementRules(ctx, projectID)
@@ -285,7 +293,7 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 	if err != nil {
 		return out, err
 	}
-	if !p.In(auth.ProjectSettingsRead, proj.ID) {
+	if !seesPlacement(p, proj.ID) {
 		return out, ErrForbidden
 	}
 	pl, err := s.placement(ctx, proj.ID, environment)

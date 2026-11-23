@@ -21,3 +21,9 @@ export function projectsWith(me: Me, permission: string): ProjectRef[] | "all" {
   if (me.permissions.includes(permission)) return "all";
   return me.projects.filter((p) => p.permissions.includes(permission)).map((p) => p.project);
 }
+
+/** The projects where the caller holds one of these permissions, or "all" when one is held for all of rvav. */
+export function projectsWithAny(me: Me, permissions: string[]): ProjectRef[] | "all" {
+  if (permissions.some((p) => me.permissions.includes(p))) return "all";
+  return me.projects.filter((p) => permissions.some((x) => p.permissions.includes(x))).map((p) => p.project);
+}

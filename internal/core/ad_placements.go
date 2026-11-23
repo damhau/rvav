@@ -100,7 +100,7 @@ func (s *Service) ADPlacements(ctx context.Context, p *auth.Principal, projectID
 		}
 		projectID = proj.ID
 	}
-	if !p.In(auth.ProjectSettingsRead, projectID) {
+	if !seesPlacement(p, projectID) {
 		return nil, ErrForbidden
 	}
 	rows, err := s.Store.ADPlacements(ctx, projectID)

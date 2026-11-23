@@ -141,8 +141,8 @@ export function createDb(now = Date.now()): Db {
   // project admin shared Web Platform's deployments with their owners only
   // and wrote a soft day-2 policy), or names a custom role of A1's
   // acceptance: "vm-operator" in Web Platform, "compliance-auditor" for all
-  // of rvav. An auditor holds no role in a project, as the server's seed
-  // gives none.
+  // of rvav, or "placement-manager" in Web Platform (#212). An auditor holds
+  // no role in a project, as the server's seed gives none.
   let as: string | null = null;
   try {
     as = localStorage.getItem("rvav.mock.as");
@@ -152,8 +152,9 @@ export function createDb(now = Date.now()): Db {
   const persona = as ? personaRoles[as] : undefined;
   const roles = { customRoles: persona ? [persona] : [] } as unknown as Db;
   const auditing = as === "auditor" || as === "compliance-auditor";
+  const inWebOnly = as === "vm-operator" || as === "placement-manager";
   const rvav =
-    as === "project-admin" || as === "vm-operator" || as === "member"
+    as === "project-admin" || inWebOnly || as === "member"
       ? ["user"]
       : as === "auditor" || as === "compliance-auditor"
         ? ["user", as]
@@ -166,8 +167,8 @@ export function createDb(now = Date.now()): Db {
     permissions: heldIn(roles, rvav, []),
     roles: roleRefs(roles, rvav),
     projects:
-      as === "vm-operator"
-        ? [meProject(roles, ref(web), rvav, ["vm-operator"])]
+      inWebOnly && as
+        ? [meProject(roles, ref(web), rvav, [as])]
         : [
             meProject(roles, ref(web), rvav, auditing ? [] : [as === "member" ? "member" : "project-admin"]),
             meProject(roles, ref(data), rvav, auditing ? [] : ["member"]),
@@ -1574,6 +1575,13 @@ const personaRoles: Record<string, MockRole> = {
     name: "Compliance auditor",
     description: "Sees everything, changes nothing.",
     permissions: builtinRoles.find((r) => r.key === "auditor")!.permissions,
+    built_in: false,
+  },
+  "placement-manager": {
+    key: "placement-manager",
+    name: "Placement manager",
+    description: "Places the project's VMs: its placement rules and OUs.",
+    permissions: ["placement.manage", "project.see"],
     built_in: false,
   },
 };

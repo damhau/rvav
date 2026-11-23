@@ -146,7 +146,7 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/projects",
         key: "projects",
         icon: Folders,
-        show: (me) => canAnywhere(me, "project.settings.read"),
+        show: (me) => canAnywhere(me, "project.settings.read") || canAnywhere(me, "placement.manage"),
       },
       {
         to: "/admin/roles",

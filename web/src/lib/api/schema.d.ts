@@ -2577,7 +2577,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every project, archived ones on request, with member counts */
+        /**
+         * Every project, archived ones on request, with member counts
+         * @description With `project.settings.read` or `placement.manage` for all of rvav.
+         */
         get: operations["listAdminProjects"];
         put?: never;
         /** Create a project (`project.create`) */
@@ -2597,7 +2600,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** A project with its settings */
+        /**
+         * A project with its settings
+         * @description With `project.settings.read` or `placement.manage` in the project:
+         *     the page of its placement is the project's.
+         */
         get: operations["getAdminProject"];
         put?: never;
         post?: never;
@@ -2628,7 +2635,8 @@ export interface paths {
          *     `audit.read`, `infrastructure.read`, `infrastructure.manage`,
          *     `policies.read`, `policies.manage`, `extensibility.read`,
          *     `extensibility.manage` or `import.manage`. Listing projects with
-         *     their settings (`listAdminProjects`) takes `project.settings.read`.
+         *     their settings (`listAdminProjects`) takes `project.settings.read`
+         *     or `placement.manage`.
          */
         get: operations["listProjectNames"];
         put?: never;
@@ -2960,7 +2968,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Placement rules, of a project or all */
+        /**
+         * Placement rules, of a project or all
+         * @description With `project.settings.read` or `placement.manage` in the project, or for all of rvav without project_id.
+         */
         get: operations["listPlacementRules"];
         put?: never;
         /** Add a placement rule for a project and environment */
@@ -3002,7 +3013,8 @@ export interface paths {
          * Where VMs' computer objects go in Active Directory
          * @description With project_id, the rows that may apply to the project: its own and
          *     those for every project, by environment or in any. Without it, every
-         *     row (ADR-0064).
+         *     row (ADR-0064). With `project.settings.read` or `placement.manage` in
+         *     the project, or for all of rvav without project_id.
          */
         get: operations["listAdPlacements"];
         put?: never;
@@ -3058,7 +3070,7 @@ export interface paths {
         };
         /**
          * What a project and environment can use now
-         * @description The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing.
+         * @description The clusters, datastores, networks (with their subnets) and folder its rules select in the inventory, and what is missing. With `project.settings.read` or `placement.manage` in the project.
          */
         get: operations["previewPlacement"];
         put?: never;

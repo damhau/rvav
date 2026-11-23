@@ -36,7 +36,7 @@
     "project_settings_read": "See the project's administration: its placement, quotas and the policies that apply there; for all of rvav, every project's.",
     "project_update": "Change the project's details and environments, or archive it.",
     "project_quotas_manage": "Set the project's quotas.",
-    "placement_manage": "Change the project's placement rules and Active Directory OUs.",
+    "placement_manage": "See and change the project's placement rules and Active Directory OUs, on its page.",
     "audit_read": "Read the audit log: the project's events, or every event for all of rvav.",
     "project_policies_manage": "Write the project's own approval, day-2 and lease policies; a global hard policy still wins.",
     "approval_read_all": "See every approval, and the questions and answers of composites' waits for a person.",

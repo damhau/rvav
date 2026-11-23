@@ -70,7 +70,7 @@ var Catalogue = []PermissionInfo{
 	{ProjectSettingsRead, true, "Projects", "See the project's administration: its placement, quotas and the policies that apply there; for all of rvav, every project's."},
 	{ProjectUpdate, true, "Projects", "Change the project's details and environments, or archive it."},
 	{ProjectQuotasManage, true, "Projects", "Set the project's quotas."},
-	{PlacementManage, true, "Projects", "Change the project's placement rules and Active Directory OUs."},
+	{PlacementManage, true, "Projects", "See and change the project's placement rules and Active Directory OUs, on its page."},
 	{AuditRead, true, "Audit", "Read the audit log: the project's events, or every event for all of rvav."},
 	{ProjectPolicies, true, "Policies", "Write the project's own approval, day-2 and lease policies; a global hard policy still wins."},
 

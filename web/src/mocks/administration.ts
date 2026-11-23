@@ -618,6 +618,11 @@ function holdsIn(db: Db, projectId: string, permission: string): boolean {
   return held.has(permission) || Boolean(group && held.has(group));
 }
 
+/** Says whether the mock user reads a project's placement, every project's for "", as the server's seesPlacement. */
+function seesPlacement(db: Db, projectId: string): boolean {
+  return holdsIn(db, projectId, "project.settings.read") || holdsIn(db, projectId, "placement.manage");
+}
+
 /** Says whether the mock user may give a role in a project, or take it away, as the server's mayGive. */
 export function mayGive(db: Db, r: MockRole, projectId: string): boolean {
   if (db.me.permissions.includes("access.manage")) return true;
@@ -1292,8 +1297,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     }),
     http.get(`${base}/admin/projects`, async ({ request }) => {
       await wait();
-      if (!db.me.permissions.includes("project.settings.read"))
-        return forbidden("you may not read every project's settings");
+      if (!seesPlacement(db, "")) return forbidden("you may not read every project's settings");
       const url = new URL(request.url);
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
       const archived = url.searchParams.get("archived") === "true";
@@ -1337,7 +1341,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/projects/:id`, async ({ params }) => {
       await wait();
       const p = project(String(params.id));
-      return p ? HttpResponse.json(adminProject(p)) : problem(404, "Not found");
+      if (!p || !holdsIn(db, p.id, "project.see")) return problem(404, "Not found");
+      if (!seesPlacement(db, p.id)) return forbidden("you may not read its settings");
+      return HttpResponse.json(adminProject(p));
     }),
     http.patch(`${base}/admin/projects/:id`, async ({ params, request }) => {
       await wait();
@@ -1602,6 +1608,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.get(`${base}/admin/placement-rules`, async ({ request }) => {
       await wait();
       const id = new URL(request.url).searchParams.get("project_id");
+      if (id && !project(id)) return problem(404, "Not found");
+      if (!seesPlacement(db, id ?? "")) return forbidden("you may not read its placement");
       return HttpResponse.json({ items: st().rules.filter((r) => !id || r.project.id === id) });
     }),
     ...(["post", "put"] as const).map((method) =>
@@ -1677,6 +1685,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const id = new URL(request.url).searchParams.get("project_id");
       const p = id ? project(id) : undefined;
       if (id && !p) return problem(404, "Not found");
+      if (!seesPlacement(db, p?.id ?? "")) return forbidden("you may not read its placement");
       const rows = st().adPlacements.filter((r) => !p || r.project_id === p.id || r.project_id === null);
       return HttpResponse.json({
         items: [...rows].sort((a, b) => Number(a.project_id === null) - Number(b.project_id === null)),
@@ -1829,6 +1838,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const p = project(url.searchParams.get("project_id") ?? "");
       const env = url.searchParams.get("environment") ?? "";
       if (!p) return problem(404, "Not found");
+      if (!seesPlacement(db, p.id)) return forbidden("you may not read its placement");
       const rules = st()
         .rules.filter((r) => r.project.id === p.id && r.environment === env)
         .sort((a, b) => a.priority - b.priority);

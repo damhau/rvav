@@ -36,7 +36,7 @@
     "project_settings_read": "Voir l'administration du projet\u00a0: son placement, ses quotas et les politiques qui s'y appliquent\u00a0; pour l'ensemble de rvav, celle de chaque projet.",
     "project_update": "Modifier les détails et les environnements du projet, ou l'archiver.",
     "project_quotas_manage": "Fixer les quotas du projet.",
-    "placement_manage": "Modifier les règles de placement du projet et ses OU Active Directory.",
+    "placement_manage": "Voir et modifier les règles de placement du projet et ses OU Active Directory, sur sa page.",
     "audit_read": "Lire le journal d'audit\u00a0: les événements du projet, ou chaque événement pour l'ensemble de rvav.",
     "project_policies_manage": "Écrire les politiques d'approbation, de jour 2 et de bail propres au projet\u00a0; une politique stricte globale l'emporte toujours.",
     "approval_read_all": "Voir chaque approbation, et les questions et réponses des attentes d'une personne dans les composites.",

@@ -1047,6 +1047,11 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - A role holding a permission that exists only for all of rvav, such as
   `policies.read`, can only be given for all of rvav.
 - A role given in a project must hold `project.see`.
+- A role that holds `placement.manage` without `project.settings.read`
+  opens the project's page in **Administration › Projects**: its
+  **Placement** tab, to change the placement rules and OUs, and its
+  **Members** and **Details** tabs, read only unless the role holds their
+  permissions too. It shows no **Quotas** tab.
 - Pages that pick or name projects list every project by name to whoever
   holds the page's permission for all of rvav, without
   `project.settings.read`: offers in **Templates and networks** and
