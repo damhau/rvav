@@ -6804,7 +6804,7 @@ export interface components {
             names?: string[];
             /** @description The names the request's deployments take from `deployment_name`, when it gives one. */
             deployment_names?: string[];
-            /** @description Next free IP addresses, as a hint only. Reserved when the request starts. */
+            /** @description Next free IP addresses of its first component's first adapter, as a hint only: `components[0].nics[0].addresses`. Reserved as the VMs are built. */
             addresses?: string[];
             placement?: {
                 cluster?: string;
@@ -6865,6 +6865,9 @@ export interface components {
             placement?: components["schemas"]["ComponentPlacement"];
             /** @description Every disk, the template's first. */
             disks: {
+                /** @description An added disk's key in the blueprint; none for the template's. */
+                key?: string;
+                /** @description 0 for the template's disk when the blueprint doesn't size it: it keeps the template's size. */
                 size_gb: number;
                 datastore?: string;
                 storage_policy?: string;
@@ -6873,11 +6876,16 @@ export interface components {
             nics: {
                 key: string;
                 network: string;
-                /** @enum {string} */
-                ipam: "efficientip" | "dhcp";
+                /**
+                 * @description Where its address comes from: EfficientIP, DHCP, or rvav's IP ranges of its network (ADR-0063).
+                 * @enum {string}
+                 */
+                ipam: "efficientip" | "dhcp" | "ip_range";
                 subnet?: string;
-                /** @description The next free address, as a hint only. */
+                /** @description The next free address, as a hint only: the first of `addresses`. */
                 address?: string;
+                /** @description The next free addresses, as a hint only. From IP ranges, one for each VM the component adds, none hinted twice in the request; rvav gives them as the VMs are built, so which VM gets which isn't known yet. From EfficientIP, its next free address alone. */
+                addresses?: string[];
             }[];
             tags?: string[];
             /** @description Its VMs are kept on separate hosts. */

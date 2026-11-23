@@ -288,9 +288,46 @@ func TestIPRangeProvisioning(t *testing.T) {
 		many.Count = new(4)
 		h.json("POST", "/api/v1/requests/preview", user, many, 200, &pv)
 		taken := slices.Collect(maps.Values(held()))
-		if slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "no_free_address" }) ||
-			pv.Addresses == nil || len(*pv.Addresses) == 0 || slices.Contains(taken, (*pv.Addresses)[0]) {
-			t.Fatalf("four = %+v, hint %v", pv.Errors, pv.Addresses)
+		if slices.ContainsFunc(pv.Errors, func(e api.FieldError) bool { return deref(e.Code) == "no_free_address" }) {
+			t.Fatalf("four = %+v", pv.Errors)
+		}
+		// Each VM it adds gets its own next address as a hint, from the
+		// ranges: none twice, none held (#209).
+		fresh := func(hints []string, n int) bool {
+			hints = slices.Sorted(slices.Values(hints))
+			return len(hints) == n && len(slices.Compact(slices.Clone(hints))) == n &&
+				!slices.ContainsFunc(hints, func(a string) bool { return slices.Contains(taken, a) })
+		}
+		if pv.Addresses == nil || !fresh(*pv.Addresses, 4) || pv.Components == nil {
+			t.Fatalf("four's hints = %v", pv.Addresses)
+		}
+		if n := (*pv.Components)[0].Nics[0]; n.Ipam != api.PreviewComponentNicsIpamIpRange || n.Addresses == nil ||
+			!slices.Equal(*n.Addresses, *pv.Addresses) || deref(n.Address) != (*pv.Addresses)[0] {
+			t.Fatalf("four's adapter = %+v", n)
+		}
+		// Two components: an address each, and the second's added disk
+		// beside its system disk.
+		pairDef := linux()
+		pairDef.Blueprint["naming"] = "{project}-{environment}-{inputs.role}{component}{seq:02}"
+		pairDef.Blueprint["components"] = []any{map[string]any{"key": "app", "title": "App"},
+			map[string]any{"key": "db", "title": "Database", "disks": []any{map[string]any{"key": "data", "size_gb": 100}}}}
+		pair := publish("ranged-pair", pairDef)
+		h.json("POST", "/api/v1/requests/preview", user, draft(pair, "pair", rangeNetwork), 200, &pv)
+		if !pv.Valid || pv.Components == nil || len(*pv.Components) != 2 {
+			t.Fatalf("pair = %+v %+v", pv.Errors, pv.Components)
+		}
+		var pairHints []string
+		for _, c := range *pv.Components {
+			if n := c.Nics[0]; n.Ipam == api.PreviewComponentNicsIpamIpRange && n.Addresses != nil {
+				pairHints = append(pairHints, *n.Addresses...)
+			}
+		}
+		if !fresh(pairHints, 2) {
+			t.Fatalf("pair's hints = %v", pairHints)
+		}
+		if d := (*pv.Components)[1].Disks; len(d) != 2 || d[0].SizeGb != 60 || d[0].Key != nil ||
+			deref(d[1].Key) != "data" || d[1].SizeGb != 100 {
+			t.Fatalf("db's disks = %+v", d)
 		}
 
 		// An update needs addresses only for the VMs it adds: those it

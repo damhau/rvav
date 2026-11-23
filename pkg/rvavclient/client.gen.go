@@ -1810,6 +1810,7 @@ func (e PolicyQuotaLineEnforcement) Valid() bool {
 const (
 	PreviewComponentNicsIpamDhcp        PreviewComponentNicsIpam = "dhcp"
 	PreviewComponentNicsIpamEfficientip PreviewComponentNicsIpam = "efficientip"
+	PreviewComponentNicsIpamIpRange     PreviewComponentNicsIpam = "ip_range"
 )
 
 // Valid indicates whether the value is a known member of the PreviewComponentNicsIpam enum.
@@ -1818,6 +1819,8 @@ func (e PreviewComponentNicsIpam) Valid() bool {
 	case PreviewComponentNicsIpamDhcp:
 		return true
 	case PreviewComponentNicsIpamEfficientip:
+		return true
+	case PreviewComponentNicsIpamIpRange:
 		return true
 	default:
 		return false
@@ -8652,7 +8655,12 @@ type PreviewComponent struct {
 
 	// Disks Every disk, the template's first.
 	Disks []struct {
-		Datastore     *string `json:"datastore,omitempty"`
+		Datastore *string `json:"datastore,omitempty"`
+
+		// Key An added disk's key in the blueprint; none for the template's.
+		Key *string `json:"key,omitempty"`
+
+		// SizeGb 0 for the template's disk when the blueprint doesn't size it: it keeps the template's size.
 		SizeGb        int     `json:"size_gb"`
 		StoragePolicy *string `json:"storage_policy,omitempty"`
 	} `json:"disks"`
@@ -8673,8 +8681,13 @@ type PreviewComponent struct {
 
 	// Nics Every network adapter, the template's first.
 	Nics []struct {
-		// Address The next free address, as a hint only.
-		Address *string                  `json:"address,omitempty"`
+		// Address The next free address, as a hint only: the first of `addresses`.
+		Address *string `json:"address,omitempty"`
+
+		// Addresses The next free addresses, as a hint only. From IP ranges, one for each VM the component adds, none hinted twice in the request; rvav gives them as the VMs are built, so which VM gets which isn't known yet. From EfficientIP, its next free address alone.
+		Addresses *[]string `json:"addresses,omitempty"`
+
+		// Ipam Where its address comes from: EfficientIP, DHCP, or rvav's IP ranges of its network (ADR-0063).
 		Ipam    PreviewComponentNicsIpam `json:"ipam"`
 		Key     string                   `json:"key"`
 		Network string                   `json:"network"`
@@ -8700,7 +8713,7 @@ type PreviewComponent struct {
 	Vcpu int `json:"vcpu"`
 }
 
-// PreviewComponentNicsIpam defines model for PreviewComponent.Nics.Ipam.
+// PreviewComponentNicsIpam Where its address comes from: EfficientIP, DHCP, or rvav's IP ranges of its network (ADR-0063).
 type PreviewComponentNicsIpam string
 
 // PreviewComponentOsFamily defines model for PreviewComponent.OsFamily.
@@ -9405,7 +9418,7 @@ type RequestPage struct {
 
 // RequestPreview defines model for RequestPreview.
 type RequestPreview struct {
-	// Addresses Next free IP addresses, as a hint only. Reserved when the request starts.
+	// Addresses Next free IP addresses of its first component's first adapter, as a hint only: `components[0].nics[0].addresses`. Reserved as the VMs are built.
 	Addresses *[]string       `json:"addresses,omitempty"`
 	Approval  ApprovalPreview `json:"approval"`
 

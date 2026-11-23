@@ -217,7 +217,7 @@ var (
 	topologyBindings = fields{"network": cel{lone: true}, "groups": cel{lone: true}, "template": cel{lone: true},
 		"post_config": cel{lone: true}}
 	topologyGuest = fields{"os_family": asIs{}}
-	topologyDisks = each{fields{"size_gb": cel{}, "storage_policy": asIs{}}}
+	topologyDisks = each{fields{"key": asIs{}, "size_gb": cel{}, "storage_policy": asIs{}}}
 	topologyNICs  = each{fields{"key": asIs{}, "network": cel{lone: true}, "ipam": asIs{}}}
 
 	vmTopology = fields{

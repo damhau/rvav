@@ -67,6 +67,17 @@ func freeIn(rs []store.IPRange) int {
 // nextInRanges is the address a network's ranges would give next, "" when
 // they are full.
 func (pl *placement) nextInRanges(rs []store.IPRange) string {
+	if next := pl.hintsInRanges(rs, 1); len(next) > 0 {
+		return next[0]
+	}
+	return ""
+}
+
+// hintsInRanges are the next n addresses a network's ranges would give,
+// after those hinted to the request's VMs so far, fewer when they are
+// full. A hint: rvav gives them as the VMs are built, in the order they
+// are, so which VM gets which isn't known yet.
+func (pl *placement) hintsInRanges(rs []store.IPRange, n int) []string {
 	taken := map[netip.Addr]bool{}
 	for _, a := range pl.held {
 		ip, err := netip.ParseAddr(a.Address)
@@ -79,12 +90,22 @@ func (pl *placement) nextInRanges(rs []store.IPRange) string {
 			taken[h.Address] = true
 		}
 	}
+	if pl.hinted == nil {
+		pl.hinted = map[string]bool{}
+	}
+	var out []string
 	for _, r := range rs {
-		if ip, ok := r.Range().First(func(a netip.Addr) bool { return taken[a] }); ok {
-			return ip.String()
+		rg := r.Range()
+		for len(out) < n {
+			ip, ok := rg.First(func(a netip.Addr) bool { return taken[a] || pl.hinted[r.ID+" "+a.String()] })
+			if !ok {
+				break
+			}
+			pl.hinted[r.ID+" "+ip.String()] = true
+			out = append(out, ip.String())
 		}
 	}
-	return ""
+	return out
 }
 
 // nextInRanges is the address a network's IP ranges, in any vCenter,

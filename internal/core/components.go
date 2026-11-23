@@ -85,8 +85,11 @@ type vmPart struct {
 	counter  string
 	names    []string
 	check    *nameCheck
-	// addresses is the next free address of its network, as a hint.
-	addresses []string
+	// addresses are the next free addresses of its network, as a hint:
+	// EfficientIP's next one, or one for each VM it adds from IP ranges;
+	// nicAddresses those of its added adapters on IP ranges.
+	addresses    []string
+	nicAddresses [][]string
 	// ad is the computer object its VMs get, their names aside, in adDir
 	// (ADR-0064); nil for none.
 	ad    *provision.ADUnit
@@ -763,19 +766,22 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		add(nameField(multi), "invalid_name", computerNameTooLong(part.names[long]))
 	}
 
-	// Addresses from IP ranges are counted across components; their
-	// next one is a hint as EfficientIP's is.
+	// Addresses from IP ranges are counted across components, and each VM
+	// added gets its own next one as a hint, as EfficientIP's is.
+	adds := max(0, part.count-part.kept)
 	if fromRanges(part.subnet) {
 		pl.takeFromRanges(part, plan.Network, field("network"), add)
 		if !strict {
-			if ip := pl.nextInRanges(pl.rangesOf(part.vcenter, plan.Network)); ip != "" {
-				part.addresses = []string{ip}
-			}
+			part.addresses = pl.hintsInRanges(pl.rangesOf(part.vcenter, plan.Network), adds)
 		}
 	}
+	part.nicAddresses = make([][]string, len(part.nicSubnets))
 	for i, sn := range part.nicSubnets {
 		if fromRanges(sn) {
 			pl.takeFromRanges(part, plan.NICs[i].Network, bindingField(c.NICs[i].Network, ""), add)
+			if !strict {
+				part.nicAddresses[i] = pl.hintsInRanges(pl.rangesOf(part.vcenter, plan.NICs[i].Network), adds)
+			}
 		}
 	}
 	if !strict && part.subnet != nil && !fromRanges(part.subnet) && s.IPAM != nil {
@@ -907,24 +913,34 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		}
 		type disk = struct {
 			Datastore     *string `json:"datastore,omitempty"`
+			Key           *string `json:"key,omitempty"`
 			SizeGb        int     `json:"size_gb"`
 			StoragePolicy *string `json:"storage_policy,omitempty"`
 		}
 		c.Disks = []disk{{SizeGb: p.vm.DiskGB, Datastore: str(p.vm.Datastore), StoragePolicy: str(p.vm.StoragePolicy)}}
 		for _, d := range p.vm.Disks {
-			c.Disks = append(c.Disks, disk{SizeGb: d.SizeGB, Datastore: str(cmp.Or(d.Datastore, p.vm.Datastore)),
+			c.Disks = append(c.Disks, disk{Key: str(d.Key), SizeGb: d.SizeGB, Datastore: str(cmp.Or(d.Datastore, p.vm.Datastore)),
 				StoragePolicy: str(cmp.Or(d.StoragePolicy, p.vm.StoragePolicy))})
 		}
 		type nic = struct {
-			Address *string                      `json:"address,omitempty"`
-			Ipam    api.PreviewComponentNicsIpam `json:"ipam"`
-			Key     string                       `json:"key"`
-			Network string                       `json:"network"`
-			Subnet  *string                      `json:"subnet,omitempty"`
+			Address   *string                      `json:"address,omitempty"`
+			Addresses *[]string                    `json:"addresses,omitempty"`
+			Ipam      api.PreviewComponentNicsIpam `json:"ipam"`
+			Key       string                       `json:"key"`
+			Network   string                       `json:"network"`
+			Subnet    *string                      `json:"subnet,omitempty"`
 		}
-		first := nic{Key: "nic1", Network: p.vm.Network, Ipam: api.PreviewComponentNicsIpam(blueprint.IPAMEfficientIP)}
-		if p.vm.DHCP {
-			first.Ipam = api.PreviewComponentNicsIpam(blueprint.IPAMDHCP)
+		hint := func(x *nic, addresses []string) {
+			if len(addresses) > 0 {
+				x.Address, x.Addresses = &addresses[0], present.Ptr(slices.Clone(addresses))
+			}
+		}
+		first := nic{Key: "nic1", Network: p.vm.Network, Ipam: api.PreviewComponentNicsIpamEfficientip}
+		switch {
+		case p.vm.DHCP:
+			first.Ipam = api.PreviewComponentNicsIpamDhcp
+		case fromRanges(p.subnet):
+			first.Ipam = api.PreviewComponentNicsIpamIpRange
 		}
 		if p.subnet != nil {
 			first.Subnet = str(p.subnet.Subnet)
@@ -939,14 +955,18 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 				first.Subnet = str(fmt.Sprintf("/%d from %s, when the request runs", sg.PrefixLength, sg.IPBlock))
 			}
 		}
-		if len(p.addresses) > 0 {
-			first.Address = &p.addresses[0]
-		}
+		hint(&first, p.addresses)
 		c.Nics = []nic{first}
 		for i, n := range p.vm.NICs {
 			x := nic{Key: n.Key, Network: n.Network, Ipam: api.PreviewComponentNicsIpam(n.IPAM)}
 			if i < len(p.nicSubnets) && p.nicSubnets[i] != nil {
 				x.Subnet = str(p.nicSubnets[i].Subnet)
+				if fromRanges(p.nicSubnets[i]) {
+					x.Ipam = api.PreviewComponentNicsIpamIpRange
+				}
+			}
+			if i < len(p.nicAddresses) {
+				hint(&x, p.nicAddresses[i])
 			}
 			if i < len(p.nicSegments) && p.nicSegments[i] != "" {
 				x.Network = "A new NSX segment (" + p.nicSegments[i] + ")"

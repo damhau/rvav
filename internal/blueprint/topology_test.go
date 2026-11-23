@@ -46,7 +46,7 @@ func TestTopologyOfAVMItem(t *testing.T) {
 	     "naming": "x", "tags": ["t"], "bindings": {"cluster": "inputs.web_cluster", "network": "segments.app"}},
 	    {"key": "db", "count": 1, "groups": ["db", "nsx:grp-backup-clients"],
 	     "guest": {"os_family": "windows", "admin_password": "db-admin"},
-	     "disks": [{"size_gb": 200, "datastore": "\"vsan-db\"", "storage_policy": "gold"}],
+	     "disks": [{"key": "data", "size_gb": 200, "datastore": "\"vsan-db\"", "storage_policy": "gold"}],
 	     "nics": [{"key": "backup", "network": "\"dvpg-backup\"", "ipam": "dhcp"}]}
 	  ],
 	  "security_groups": [
@@ -66,7 +66,7 @@ func TestTopologyOfAVMItem(t *testing.T) {
 				"groups": []any{"web"}, "bindings": map[string]any{"network": "segments.app"}},
 			map[string]any{"key": "db", "count": float64(1), "groups": []any{"db", "nsx:grp-backup-clients"},
 				"guest": map[string]any{"os_family": "windows"},
-				"disks": []any{map[string]any{"size_gb": float64(200), "storage_policy": "gold"}},
+				"disks": []any{map[string]any{"key": "data", "size_gb": float64(200), "storage_policy": "gold"}},
 				"nics":  []any{map[string]any{"key": "backup", "network": `"dvpg-backup"`, "ipam": "dhcp"}}},
 		},
 		"security_groups": []any{

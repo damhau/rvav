@@ -152,10 +152,12 @@ type placement struct {
 	subnets    map[string]store.NetworkSubnet
 	// ranges are rvav's IP ranges, held the addresses they gave, and
 	// rangeNeed those the request needs, by vCenter and network, by its
-	// components so far (ADR-0063).
+	// components so far (ADR-0063); hinted are the addresses its preview
+	// hinted from them, by range and address.
 	ranges    []store.IPRange
 	held      []store.IPAllocation
 	rangeNeed map[string]int
+	hinted    map[string]bool
 	// hosts, pools and pods are every vCenter's hosts, resource pools and
 	// datastore clusters (ADR-0036); a datastore in a pod carries the
 	// pod's tags in datastores.

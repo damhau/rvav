@@ -109,6 +109,12 @@ is evaluated if the network's ranges don't have the free addresses its VMs
 need, with the code `no_free_address`. An update needs addresses only for
 the VMs it adds: the VMs it keeps hold theirs (I1.6).
 
+The preview hints, without reserving, the next free address of each VM a
+component adds, in the order allocation gives them and across the
+request's components, none twice: an adapter on ranges says `ipam:
+ip_range` and lists them in `addresses`. Which VM gets which isn't known
+before, as the VMs are built at once (#209).
+
 ### No DNS
 rvav writes no DNS record for an address from a range: the plan has no DNS
 step for a VM whose addresses all come from ranges, and its reserve step's
