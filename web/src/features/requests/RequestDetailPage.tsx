@@ -161,6 +161,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const dataStep =
     (chosenData ? withData.find((s) => s.id === chosenData) : undefined) ??
     (selectedNode ? withData.find((s) => s.key === selectedNode) : undefined);
+  // An AWX job has no log until it starts (has_log): its step's system says it will.
+  const logs = flatten(all).some((s) => s.system === "awx" || s.has_log);
   const deploymentId = r?.deployment_ids?.[0];
   const running = r && ["running", "queued", "cancelling"].includes(r.status);
   const elapsed = r?.started_at ? duration(r.started_at, r.finished_at) : null;
@@ -346,32 +348,36 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
         </Panel>
 
         <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-4">
-          <Panel
-            title={t("detail.awx")}
-            flush
-            description={logStep && <span className="font-mono break-words">{logStep.title.replace(/^AWX /, "")}</span>}
-            footer={
-              logStep?.external_ref?.url && (
-                <>
-                  <span className="mr-auto">{t("detail.followsLive")}</span>
-                  <a
-                    href={logStep.external_ref.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-accent hover:underline"
-                  >
-                    {t("detail.openInAwx")} <ExternalLink className="size-3" aria-hidden />
-                  </a>
-                </>
-              )
-            }
-          >
-            {id && logStep ? (
-              <LogViewer requestId={id} step={logStep} />
-            ) : (
-              <EmptyState icon={SquareTerminal} title={t("detail.noAwx")} body={t("detail.noAwxBody")} />
-            )}
-          </Panel>
+          {logs && (
+            <Panel
+              title={t("detail.awx")}
+              flush
+              description={
+                logStep && <span className="font-mono break-words">{logStep.title.replace(/^AWX /, "")}</span>
+              }
+              footer={
+                logStep?.external_ref?.url && (
+                  <>
+                    <span className="mr-auto">{t("detail.followsLive")}</span>
+                    <a
+                      href={logStep.external_ref.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-accent hover:underline"
+                    >
+                      {t("detail.openInAwx")} <ExternalLink className="size-3" aria-hidden />
+                    </a>
+                  </>
+                )
+              }
+            >
+              {id && logStep ? (
+                <LogViewer requestId={id} step={logStep} />
+              ) : (
+                <EmptyState icon={SquareTerminal} title={t("detail.noOutput")} body={t("detail.noOutputBody")} />
+              )}
+            </Panel>
+          )}
 
           {withData.length > 0 && (
             <Panel

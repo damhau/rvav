@@ -1,7 +1,21 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { Step } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
+
+const stored = (number: string) => db.requests.find((r) => r.request.number === number)!;
+const step = (key: string, system: Step["system"], status: Step["status"], error?: string): Step => ({
+  id: `stp_${key}`,
+  key,
+  title: key,
+  system,
+  status,
+  has_log: false,
+  children: [],
+  ...(error ? { error } : {}),
+});
 
 describe("a request's page against the mock API", () => {
   it("says in its header what was asked, by whom and where it stands", async () => {
@@ -17,8 +31,6 @@ describe("a request's page against the mock API", () => {
     expect(within(header).getByRole("link", { name: "Requests" })).toHaveAttribute("href", "/requests");
     expect(within(header).getByRole("button", { name: "Cancel request" })).toBeVisible();
 
-    const output = screen.getByRole("region", { name: "AWX job output" });
-    expect(await within(output).findByText("No AWX job")).toBeVisible();
     const asked = screen.getByRole("region", { name: "What was asked for" });
     expect(within(asked).getByText("role")).toBeVisible();
     expect(within(asked).getByText("Reason")).toBeVisible();
@@ -66,5 +78,58 @@ describe("a request's page against the mock API", () => {
       "href",
       "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",
     );
+  });
+});
+
+describe("a request's AWX job output", () => {
+  it("shows a composite's AWX job output", async () => {
+    renderApp("/requests/REQ-10484");
+    const output = await screen.findByRole("region", { name: "AWX job output" }, { timeout: 5000 });
+    expect(
+      await within(output).findByRole("log", { name: "Output of The database's owner · pg-create-role" }),
+    ).toHaveTextContent("permission denied to create role orders_owner");
+  });
+
+  it("shows the panel, waiting, for an AWX job that hasn't started", async () => {
+    // As the server plans a VM's post-configuration at submit: its job has no log until it starts.
+    stored("REQ-10477").steps.push(
+      step("awx.inventory", "awx", "pending"),
+      step("awx.job:linux-baseline", "awx", "pending"),
+    );
+    renderApp("/requests/REQ-10477");
+    const output = await screen.findByRole("region", { name: "AWX job output" }, { timeout: 5000 });
+    expect(within(output).getByText("No output yet")).toBeVisible();
+    expect(output).toHaveTextContent("Its AWX job hasn't started. Its output shows here as it runs.");
+  });
+
+  it("shows no AWX job output on a composite that runs no AWX job, in English or French", async () => {
+    // A composite of REST calls only, failed at its second.
+    const r = stored("REQ-10484");
+    r.steps = [
+      step("submit", "rvav", "done"),
+      step("policy", "policy", "done"),
+      step("step:nodes", "rest", "done"),
+      step("step:owner", "rest", "failed", "REST call: 503 Service Unavailable"),
+      step("ready", "rvav", "pending"),
+    ];
+    r.logs = {};
+    r.request.error = { step_id: "stp_step:owner", message: "The CMDB didn't answer: 503 Service Unavailable." };
+    const { unmount } = renderApp("/requests/REQ-10484");
+    // The failure shows once the steps are in.
+    expect(
+      (await screen.findAllByText("The CMDB didn't answer: 503 Service Unavailable.", {}, { timeout: 5000 }))[0],
+    ).toBeVisible();
+    expect(screen.queryByRole("region", { name: "AWX job output" })).not.toBeInTheDocument();
+    expect(screen.queryByText("AWX job output")).not.toBeInTheDocument();
+    unmount();
+
+    db.me.locale = "fr";
+    await i18n.changeLanguage("fr");
+    renderApp("/requests/REQ-10484");
+    expect(
+      (await screen.findAllByText("The CMDB didn't answer: 503 Service Unavailable.", {}, { timeout: 5000 }))[0],
+    ).toBeVisible();
+    expect(screen.getByRole("region", { name: "Ce qui a été demandé" })).toBeVisible();
+    expect(screen.queryByText("Sortie du job AWX")).not.toBeInTheDocument();
   });
 });
