@@ -172,3 +172,82 @@ test.describe("reflow at 320 px", () => {
     await noSideways(page, "Approval needed, Teams");
   });
 });
+
+// #204: the menu's widths are the sidebar's (232 px), the drawer's on a
+// phone, and the rail's (56 px), where the name is the link's and a tooltip's.
+test.describe("a 40-character name beside a wide logo", () => {
+  const name = "Plateforme cloud du canton de Genève, GE";
+  const wide = (fill: string) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="120" viewBox="0 0 600 120">` +
+    `<rect width="600" height="120" rx="12" fill="${fill}"/></svg>`;
+
+  async function brand(page: Page) {
+    await page.goto("/admin/branding");
+    await page.getByRole("textbox", { name: "Portal name" }).fill(name);
+    await page.getByRole("button", { name: "Save branding" }).click();
+    await expect(page.getByText("Branding saved")).toBeVisible();
+    for (const [variant, fill] of [
+      ["light", "#806600"],
+      ["dark", "#e8c95c"],
+    ] as const) {
+      const chooser = page.waitForEvent("filechooser");
+      await page.getByRole("button", { name: `Upload the ${variant} theme's logo` }).click();
+      await (
+        await chooser
+      ).setFiles({ name: `wide-${variant}.svg`, mimeType: "image/svg+xml", buffer: Buffer.from(wide(fill)) });
+      await expect(page.getByText(`${variant === "light" ? "Light" : "Dark"} theme's logo saved`)).toBeVisible();
+    }
+    await quiet(page);
+  }
+
+  const home = (page: Page) => page.getByRole("navigation", { name: "Main" }).getByRole("link").first();
+
+  /** Where the name and the logo shown fall in the menu: inside it, the name not cut. */
+  const layout = (page: Page) =>
+    home(page).evaluate((a, name) => {
+      const menu = a.closest("aside, [role=dialog]")!.getBoundingClientRect();
+      const inside = (r: DOMRect) => r.left >= menu.left && r.right <= menu.right;
+      const text = [...a.querySelectorAll("span")].find((s) => s.textContent === name)!;
+      const logo = [...a.querySelectorAll("img")].find((i) => i.getBoundingClientRect().width > 0)!;
+      return {
+        nameCut: text.scrollWidth > text.clientWidth,
+        nameInside: inside(text.getBoundingClientRect()),
+        logoInside: inside(logo.getBoundingClientRect()),
+      };
+    }, name);
+
+  test("shows whole in the sidebar and the drawer, and in the rail's tooltip", async ({ page }) => {
+    await brand(page);
+    for (const t of ["Light", "Dark"] as const) {
+      await theme(page, t);
+      expect(await layout(page), `the sidebar, ${t}`).toEqual({ nameCut: false, nameInside: true, logoInside: true });
+      await shot(page, `wide-logo-sidebar-${t}`);
+    }
+    await bothThemes(page, "Branding, a wide logo and a 40-character name");
+
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect(home(page)).toHaveAccessibleName(new RegExp(`^${name}`));
+    for (const t of ["Light", "Dark"] as const) {
+      await theme(page, t);
+      expect((await layout(page)).logoInside, `the rail, ${t}`).toBe(true);
+      await home(page).focus();
+      await expect(page.getByRole("tooltip")).toHaveText(name);
+      await shot(page, `wide-logo-rail-${t}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("tooltip")).toBeHidden();
+      await scan(page, `the rail, a wide logo, ${t}`);
+    }
+
+    await page.setViewportSize({ width: 320, height: 640 });
+    for (const t of ["Light", "Dark"] as const) {
+      await theme(page, t);
+      await page.getByRole("button", { name: "Open navigation" }).click();
+      await expect(home(page)).toBeVisible();
+      expect(await layout(page), `the drawer, ${t}`).toEqual({ nameCut: false, nameInside: true, logoInside: true });
+      await scan(page, `the drawer, a wide logo, ${t}`);
+      await shot(page, `wide-logo-drawer-${t}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+    }
+  });
+});

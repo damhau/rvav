@@ -34,7 +34,7 @@ function Screen({ title, lead, children }: { title: string; lead: React.ReactNod
       <div className="flex w-full max-w-[360px] flex-col gap-6">
         <div className="flex items-center gap-2">
           <BrandMark />
-          <span className="min-w-0 truncate text-body font-semibold tracking-[-0.01em]">{name}</span>
+          <span className="min-w-0 text-body leading-tight font-semibold tracking-[-0.01em] break-words">{name}</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <h1 className="text-title font-semibold">{title}</h1>

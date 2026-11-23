@@ -106,18 +106,33 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
   return (
     <nav aria-label={t("nav.label")} className="flex h-full flex-col">
       <div className={cn("pt-3.5 pb-4", rail ? "flex justify-center px-2" : "px-3")}>
-        <Link
-          to="/"
-          activeOptions={{ exact: true }}
-          className={cn("flex items-center gap-2 rounded-md py-0.5 text-fg", rail ? "justify-center px-1" : "px-1.5")}
-          onClick={onNavigate}
-        >
-          <BrandMark className={rail ? "max-w-[22px]" : undefined} />
-          <span className={rail ? "sr-only" : "min-w-0 truncate text-body font-semibold tracking-[-0.01em]"}>
-            {branding.name}
-          </span>
-          <span className={rail ? "sr-only" : "ml-auto text-caption text-faint"}>GVA</span>
-        </Link>
+        {withTip(
+          branding.name,
+          <Link
+            to="/"
+            activeOptions={{ exact: true }}
+            className={cn(
+              "flex items-center rounded-md py-0.5 text-fg",
+              rail ? "justify-center px-1" : "flex-wrap gap-x-2 gap-y-1 px-1.5",
+            )}
+            onClick={onNavigate}
+          >
+            <BrandMark className={rail ? "max-w-8" : undefined} />
+            {/* Beside a wide logo, a name of 40 characters goes under it, whole (#204). */}
+            <span className={rail ? "contents" : "flex min-w-36 flex-1 items-center gap-2"}>
+              <span
+                className={
+                  rail
+                    ? "sr-only"
+                    : "min-w-0 flex-1 text-body leading-tight font-semibold tracking-[-0.01em] break-words"
+                }
+              >
+                {branding.name}
+              </span>
+              <span className={rail ? "sr-only" : "text-caption text-faint"}>GVA</span>
+            </span>
+          </Link>,
+        )}
       </div>
 
       <div

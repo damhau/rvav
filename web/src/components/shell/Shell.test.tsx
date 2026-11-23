@@ -1,6 +1,7 @@
 import { act, cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { applyBranding, rvavBranding } from "@/lib/branding";
 import { i18n } from "@/lib/i18n";
 import { customRoles } from "@/mocks/roles";
 import { db, resetDb } from "@/mocks/seed";
@@ -147,6 +148,30 @@ describe("sidebar", () => {
       expect(await screen.findByRole("tooltip")).toHaveTextContent("Policies");
     } finally {
       media.mockRestore();
+    }
+  });
+
+  it("names the portal in a tooltip on the rail, where only its logo shows", async () => {
+    const media = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(width < 64rem)",
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+    const name = "Plateforme cloud du canton de Genève, GE";
+    act(() => applyBranding({ ...rvavBranding, name }));
+    try {
+      renderApp("/admin/policies");
+      const home = within(await mainNav()).getAllByRole("link")[0]!;
+      expect(home).toHaveAccessibleName(`${name} GVA`);
+      act(() => home.focus());
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(name);
+    } finally {
+      media.mockRestore();
+      act(() => applyBranding(rvavBranding));
     }
   });
 });

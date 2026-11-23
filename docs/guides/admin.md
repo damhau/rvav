@@ -2550,6 +2550,11 @@ CSS escape (`\`), or refers to anything outside itself. Export it again as plain
 PNG. Emails carry the light theme's logo only when it is a PNG or a JPEG,
 since many mail clients block SVG; they show the portal's name otherwise.
 
+The menu shows a logo 22 pixels high and 96 wide at most. When the name
+doesn't fit beside it, the name goes under it, on as many lines as it
+needs. In a narrow window, where the menu shows icons only, the logo
+stands alone and its tooltip gives the name.
+
 To go back to rvav's own colours, click **Use rvav's colours**, then
 **Save branding**. To remove a logo, click **Remove**.
 

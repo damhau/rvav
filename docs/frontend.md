@@ -209,7 +209,10 @@ page, and secondary text that still reads.
   and on the sign-in page (the dark theme's logo where there is one, by
   CSS), and, when an accent is set, the accent tokens of each theme in a
   `<style id="rvav-branding">`. Without an accent, `styles.css` stays
-  as it is. `useBranding()` follows a save at once.
+  as it is. `useBranding()` follows a save at once. The menu caps the
+  logo at 96 px and wraps the name under it when it doesn't fit beside
+  it, never cutting it short; on the rail the logo's tooltip names the
+  portal.
 - IBM Plex Sans for text, with tabular numbers (`tnum`) where numbers line up.
   IBM Plex Mono only for identifiers, addresses and code: a VM's name under its
   label, an IP, a key, a path, YAML. Counts, times and step numbers stay in the
