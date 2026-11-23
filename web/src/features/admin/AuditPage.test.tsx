@@ -97,7 +97,7 @@ describe("Audit log", () => {
     expect(within(created).queryByRole("link")).toBeNull();
     expect(await row("role.delete")).toHaveTextContent("role VM operator (no longer exists)");
     expect(await row("token.create")).toHaveTextContent("API token GitLab pipeline");
-    expect(await row("approval.timeout")).toHaveTextContent("approval apr_17");
+    expect(await row("approval.timeout")).toHaveTextContent("approval REQ-10477 · Infrastructure leads");
 
     await user.click(within(published).getByRole("button", { name: /^Open the event from/ }));
     const sheet = await screen.findByRole("dialog", { name: "catalog.version.publish" });

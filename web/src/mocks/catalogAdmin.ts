@@ -29,6 +29,7 @@ import {
   testEntry,
   type StoredEntry,
 } from "./formLibrary";
+import { auditTargetNames } from "./governance";
 import { applyStates, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
@@ -291,6 +292,8 @@ function blueprintFor(item: StoredItem): Record<string, unknown> {
       }
     : { kind: "awx", awx: { title: item.name, job_template: item.source.awx_template_name ?? item.slug } };
 }
+
+auditTargetNames("property_group", (db, key) => groupAt(db, key)?.name);
 
 function state(db: Db): AdminState {
   const d = db as Db & { catalogAdmin?: AdminState };

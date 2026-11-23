@@ -6,7 +6,7 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { itemBlueprints } from "./catalogAdmin";
 import { workflowRegistrations } from "./extensibility";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import type { Db } from "./seed";
 import { unknownField } from "./strict";
 
@@ -20,6 +20,8 @@ const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOStri
 /** The AWX templates and day-2 actions the mocks' AWX has, as /admin/awx/templates and /admin/awx/actions list them. */
 export const awxJobTemplates = ["install-monitoring-agent", "create-load-balancer", "delete-load-balancer"];
 export const awxActionKeys = ["awx.install-monitoring-agent", "awx.patch-now"];
+
+auditTargetNames("resource_type", (db, key) => state(db).find((t) => t.key === key)?.title);
 
 function state(db: Db): Stored[] {
   const d = db as Db & { resourceTypes?: Stored[] };
@@ -256,7 +258,7 @@ export function resourceTypeHandlers(db: Db, base: string, wait: () => Promise<v
           `It is used by ${t.used_by.join(", ")}: disable it instead.`,
         );
       list.splice(i, 1);
-      audited(db, "resource_type.delete", "resource_type", t.key ?? "");
+      audited(db, "resource_type.delete", "resource_type", t.key ?? "", {}, t.title);
       return new HttpResponse(null, { status: 204 });
     }),
   ];

@@ -7,7 +7,7 @@ import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
-import { audited, policyNameTooLong } from "./governance";
+import { audited, auditTargetNames, policyNameTooLong } from "./governance";
 import { chooseLease, leaseTermsErrors, looserLease, looserRule, orderedRules, type LeaseTerms } from "./leases";
 import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
 import { rangeMappings } from "./ipRanges";
@@ -249,6 +249,13 @@ export function computerObject(db: Db, projectId: string, env: string, name: str
   const resolve = (dn: string) => (/(^|,)\s*dc=/i.test(dn) ? dn : `${dn},${base}`);
   return { dn: `CN=${name.toUpperCase()},${resolve(row.ou)}`, groups: row.groups.map(resolve) };
 }
+
+auditTargetNames("lease_rule", (db, id) => adminState(db).leaseRules.find((r) => r.id === id)?.name);
+auditTargetNames("naming_policy", (db, id) => adminState(db).naming.find((n) => n.id === id)?.name);
+auditTargetNames("approval_policy", (db, id) => adminState(db).approvals.find((a) => a.id === id)?.name);
+auditTargetNames("day2_policy", (db, id) => adminState(db).day2.find((a) => a.id === id)?.name);
+auditTargetNames("vm_template", (db, key) => adminState(db).templates.find((x) => x.key === key)?.label);
+auditTargetNames("size_preset", (db, key) => adminState(db).sizes.find((x) => x.key === key)?.label);
 
 export function adminState(db: Db): AdminState {
   const d = db as Db & { administration?: AdminState };
@@ -1599,8 +1606,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (i < 0) return problem(404, "Not found");
       if (db.projects.some((p) => p.environments.includes(String(params.key))))
         return problem(409, "Conflict", undefined, `Projects use ${String(params.key)}.`);
-      db.environments.splice(i, 1);
-      audited(db, "environment.delete", "environment", String(params.key));
+      const gone = db.environments.splice(i, 1)[0]!;
+      audited(db, "environment.delete", "environment", gone.key, {}, gone.name);
       return new HttpResponse(null, { status: 204 });
     }),
 
@@ -2008,11 +2015,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     // ── Templates, sizes, naming ──
     ...(
       [
-        ["templates", "template"],
-        ["sizes", "size"],
+        ["templates", "template", "vm_template"],
+        ["sizes", "size", "size_preset"],
       ] as const
-    ).flatMap(([path, kind]) => {
-      const list = () => (kind === "template" ? st().templates : st().sizes) as { key: string }[];
+    ).flatMap(([path, kind, type]) => {
+      const list = () => (kind === "template" ? st().templates : st().sizes) as { key: string; label: string }[];
       return [
         http.get(`${base}/admin/${path}`, async () => {
           await wait();
@@ -2035,7 +2042,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             ...(kind === "template" ? storedTemplate(w) : {}),
           };
           list().push(row);
-          audited(db, `${kind}.create`, kind, w.key);
+          audited(db, `${kind}.create`, type, w.key);
           return HttpResponse.json(row, { status: 201 });
         }),
         http.put(`${base}/admin/${path}/:key`, async ({ params, request }) => {
@@ -2053,15 +2060,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             ...(kind === "template" ? storedTemplate(w) : {}),
             key: String(params.key),
           };
-          audited(db, `${kind}.update`, kind, String(params.key));
+          audited(db, `${kind}.update`, type, String(params.key));
           return HttpResponse.json(list()[i]);
         }),
         http.delete(`${base}/admin/${path}/:key`, async ({ params }) => {
           await wait();
           const i = list().findIndex((x) => x.key === params.key);
           if (i < 0) return problem(404, "Not found");
-          list().splice(i, 1);
-          audited(db, `${kind}.delete`, kind, String(params.key));
+          const gone = list().splice(i, 1)[0]!;
+          audited(db, `${kind}.delete`, type, String(params.key), {}, gone.label);
           return new HttpResponse(null, { status: 204 });
         }),
       ];
@@ -2106,7 +2113,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const list = st().naming;
       const i = list.findIndex((x) => x.id === params.id);
       if (i < 0) return problem(404, "Not found");
-      list.splice(i, 1);
+      const gone = list.splice(i, 1)[0]!;
+      audited(db, "naming.delete", "naming_policy", gone.id, {}, gone.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/naming-preview`, async ({ request }) => {
@@ -2284,8 +2292,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (i < 0) return problem(404, "Not found");
       const refused = refusedChange(list[i]);
       if (refused) return refused;
-      list.splice(i, 1);
-      audited(db, "policy.lease_rule.delete", "lease_rule", String(params.id));
+      const gone = list.splice(i, 1)[0]!;
+      audited(db, "policy.lease_rule.delete", "lease_rule", gone.id, {}, gone.name);
       return new HttpResponse(null, { status: 204 });
     }),
     ...(
@@ -2299,6 +2307,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           id: string;
           priority: number;
           project_id?: string | null;
+          name?: string;
           set_by_admin: boolean;
           levels?: S["ApprovalLevel"][];
         }[];
@@ -2386,8 +2395,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           if (i < 0) return problem(404, "Not found");
           const refused = refusedChange(list()[i]);
           if (refused) return refused;
-          list().splice(i, 1);
-          audited(db, `policy.${kind}.delete`, `${kind}_policy`, String(params.id));
+          const gone = list().splice(i, 1)[0]!;
+          audited(db, `policy.${kind}.delete`, `${kind}_policy`, gone.id, {}, gone.name);
           return new HttpResponse(null, { status: 204 });
         }),
       ];

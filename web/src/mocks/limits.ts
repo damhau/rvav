@@ -3,7 +3,7 @@
 // on top; and what they add to previews and What applies here.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
-import { audited, policyNameTooLong } from "./governance";
+import { audited, auditTargetNames, policyNameTooLong } from "./governance";
 import type { Db } from "./seed";
 import { warning } from "./warnings";
 
@@ -27,6 +27,8 @@ const kindNames: Record<Kind, string> = {
 };
 
 const isCount = (k: Kind) => k === "deployments_per_user" || k === "deployments_per_project";
+
+auditTargetNames("deployment_limit_policy", (db, id) => limitState(db).policies.find((p) => p.id === id)?.name);
 
 export function limitState(db: Db): { policies: Policy[]; seq: number } {
   const d = db as Db & { limits?: { policies: Policy[]; seq: number } };
@@ -317,7 +319,7 @@ export function limitHandlers(db: Db, base: string, wait: () => Promise<void>) {
       if (!was) return problem(404, "Not found");
       if (!changes(was)) return forbidden();
       st().policies = st().policies.filter((p) => p.id !== was.id);
-      audited(db, "policy.limit.delete", "deployment_limit_policy", was.id);
+      audited(db, "policy.limit.delete", "deployment_limit_policy", was.id, {}, was.name);
       return new HttpResponse(null, { status: 204 });
     }),
   ];

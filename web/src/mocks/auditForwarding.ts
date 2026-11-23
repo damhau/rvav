@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import type { Db } from "./seed";
 import { unknownField } from "./strict";
 
@@ -18,6 +18,8 @@ const later = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOSt
 const webhookHosts = ["cmdb.corp.example", "hooks.corp.example", "servicenow.corp.example"];
 const categories: S["AuditCategory"][] = ["sign_in", "token", "access", "catalog", "policy", "infrastructure", "extensibility", "settings", "request", "other"]; // prettier-ignore
 const facilities = new Set<string>(["kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news", "uucp", "cron", "authpriv", "ftp", "ntp", "audit", "alert", "clock", "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"]); // prettier-ignore
+
+auditTargetNames("audit_destination", (db, id) => state(db).find((d) => d.id === id)?.name);
 
 function state(db: Db): Destination[] {
   const d = db as Db & { auditDestinations?: Destination[] };

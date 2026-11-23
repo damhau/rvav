@@ -8,6 +8,7 @@ import { leasePolicyOf, rolesGiven } from "./administration";
 import { seededBlueprint } from "./blueprints";
 import { keptFromDeletion } from "./day2";
 import { freeDeploymentName } from "./deploymentNames";
+import { auditTargetNames } from "./governance";
 import { clusters, datastores, networks } from "./inventory";
 import { heldIn } from "./roles";
 import type { Db, StoredItem } from "./seed";
@@ -46,6 +47,8 @@ const VCENTER = "vc01.corp.example";
 /** How long a run takes in the mocks. */
 const RUN_MS = 700;
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+
+auditTargetNames("onboarding_plan", (db, id) => state(db).plans.find((p) => p.plan.id === id)?.plan.name);
 
 function state(db: Db): State {
   const d = db as Db & { onboarding?: State };

@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -19,6 +19,8 @@ export interface DraftCheck {
 }
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+
+auditTargetNames("schedule", (db, id) => state(db).find((s) => s.id === id)?.name);
 
 function state(db: Db): Stored[] {
   const d = db as Db & { schedules?: Stored[] };

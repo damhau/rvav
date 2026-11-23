@@ -36,7 +36,7 @@ function state(db: Db): GovernanceState {
         { id: "6", at: ago(8), actor: lea, action: "auth.token_used", target_type: "api_token", target_id: "tok_ci", project: null, detail: { name: "GitLab pipeline", method: "token", ip: "10.30.1.5", user_agent: "terraform-provider-rvav/1.0" } },
         { id: "5", at: ago(12), actor: lea, action: "catalog.version.publish", target_type: "catalog_item", target_id: "itm_rhel9", project: null, detail: { version: "3.2" } },
         { id: "4", at: ago(55), actor: lea, action: "member.set", target_type: "project", target_id: web.id, project, detail: { user_id: "usr_tnguyen", role: "member" } },
-        { id: "3", at: ago(180), actor: null, action: "approval.timeout", target_type: "approval", target_id: "apr_17", project, detail: {} },
+        { id: "3", at: ago(180), actor: null, action: "approval.timeout", target_type: "approval", target_id: "apr_10477_1", project, detail: {} },
         { id: "2", at: ago(60 * 26), actor: lea, action: "policy.lease.set", target_type: "lease_policy", target_id: "dev", project: null, detail: { default_days: 30 } },
         { id: "1", at: ago(60 * 50), actor: lea, action: "token.create", target_type: "api_token", target_id: "tok_ci", project: null, detail: { name: "GitLab pipeline" } },
       ], // prettier-ignore
@@ -52,10 +52,18 @@ type TargetName = (db: Db, id: string) => string | undefined;
 const targetNames = new Map<string, TargetName>([
   ["deployment", (db, id) => db.deployments.find((d) => d.id === id)?.name],
   ["request", (db, id) => db.requests.find((r) => r.request.id === id)?.request.number],
+  [
+    "approval",
+    (db, id) => {
+      const a = db.approvals.find((x) => x.id === id);
+      return a && `${a.request.number} · ${a.level.name}`;
+    },
+  ],
   ["project", (db, id) => db.projects.find((p) => p.id === id)?.name],
   ["catalog_item", (db, id) => db.items.find((i) => i.id === id)?.name],
   ["user", (db, id) => db.users.find((u) => u.id === id)?.name],
   ["environment", (db, id) => db.environments.find((e) => e.key === id)?.name],
+  ["lease_policy", (db, id) => db.environments.find((e) => e.key === id)?.name],
   ["api_token", (db, id) => state(db).tokens.find((t) => t.id === id)?.name],
 ]);
 

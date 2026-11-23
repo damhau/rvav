@@ -5,6 +5,7 @@
 import type { components } from "@/lib/api/schema";
 import { toText } from "@/lib/utils";
 import { celCheck, celEval } from "./cel";
+import { auditTargetNames } from "./governance";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -28,6 +29,8 @@ export const storedEntry = (key: string, version: number, w: S["FormLibraryEntry
   ...(w.message ? { message: w.message } : {}),
   updated_at: now(),
 });
+
+auditTargetNames("form_library", (db, key) => entryAt(db, key)?.name);
 
 /** Every version of every entry, seeded on first use. */
 export function libraryOf(db: Db): StoredEntry[] {

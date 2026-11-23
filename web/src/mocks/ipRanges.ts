@@ -4,7 +4,7 @@
 // server's where the UI shows them.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import { networks, VCENTER } from "./inventory";
 import type { Db } from "./seed";
 import { unknownField } from "./strict";
@@ -78,6 +78,8 @@ function sizeOf(r: S["IpRangeWrite"] & { excluded: string[] }): number {
 }
 
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+auditTargetNames("ip_range", (db, id) => rangeState(db).ranges.find((r) => r.id === id)?.name);
 
 export function rangeState(db: Db): RangeState {
   const d = db as Db & { ipRanges?: RangeState };
