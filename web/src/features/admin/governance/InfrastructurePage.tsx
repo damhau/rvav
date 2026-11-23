@@ -265,7 +265,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "templates"] });
-      toast.success(t("infra.templates.saved", { name: f.label }));
+      toast.success(t(template ? "infra.templates.saved" : "infra.templates.created", { name: f.label }));
       onClose();
     },
     onError: (e) => {
@@ -599,7 +599,7 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
         : call(api.POST("/admin/sizes", { body: f })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "sizes"] });
-      toast.success(t("infra.sizes.saved", { name: f.label }));
+      toast.success(t(size ? "infra.sizes.saved" : "infra.sizes.created", { name: f.label }));
       onClose();
     },
     onError: (e) => {
@@ -805,7 +805,7 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "network-mappings"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
-      toast.success(t("infra.networks.mapped", { network }));
+      toast.success(t(mapping ? "infra.networks.saved" : "infra.networks.added", { network }));
       onClose();
     },
     onError: (e) => {

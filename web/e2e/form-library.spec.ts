@@ -77,7 +77,7 @@ test("a form library validation refuses a request on its input, then lets it thr
   await tryIt.getByRole("button", { name: "Run test" }).press("Enter");
   await expect(tryIt).toContainText("It passes.");
   await sheet.getByRole("button", { name: "Create entry", exact: true }).press("Enter");
-  await expect(page.getByText("Host prefix saved as version 1")).toBeVisible();
+  await expect(page.getByText("Host prefix created")).toBeVisible();
   const table = page.getByRole("table", { name: "Form library entries" });
   await expect(table).toContainText("hostPrefix");
 

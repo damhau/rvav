@@ -541,7 +541,7 @@ test("connections drawn with the mouse from a node's dot: on a draft just made, 
   await expect(topology.locator(".react-flow__node").first()).toBeVisible();
   await expect(topology.locator(".rvav-connect")).toHaveCount(0);
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
+  await expect(page.getByText(/^Draft [\d.]+ created from the published version/)).toBeVisible();
   const node = (name: RegExp) => topology.getByRole("button", { name });
   const web = node(/^VMs Web servers\./);
   const db = node(/^1 VM Database\./);

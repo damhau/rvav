@@ -141,7 +141,7 @@
     "deleteConsequences": "Personne ne le détient, et aucune politique de jour 2 ne le nomme\u00a0: personne ne perd de permission.",
     "deleteRole": "Supprimer le rôle",
     "saved": "{{name}} enregistré",
-    "made": "{{name}} créé",
+    "created": "{{name}} créé",
     "notSaved": "Non enregistré",
     "panel": "Rôle",
     "key": "Clé",

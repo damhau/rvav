@@ -700,7 +700,7 @@ function RuleSheet({
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "placement-rules"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
-      toast.success(t("project.rule.saved"));
+      toast.success(t(rule ? "project.rule.saved" : "project.rule.created"));
       onClose();
     },
     onError: (e) => {
@@ -1105,7 +1105,7 @@ function LimitSheet({
         const items = existing ? limits.map((l) => (limitKey(l) === editing ? row : l)) : [...limits, row];
         save.mutate(items, {
           onSuccess: () => {
-            toast.success(t("quota.saved"));
+            toast.success(t(existing ? "quota.saved" : "quota.added"));
             onClose();
           },
         });

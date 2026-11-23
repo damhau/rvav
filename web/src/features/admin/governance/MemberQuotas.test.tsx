@@ -19,7 +19,7 @@ describe("each member's quota", () => {
     expect(within(sheet).getByText("Empty for no limit.")).toBeInTheDocument();
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "8");
     await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
-    expect(await screen.findByText("Limit saved")).toBeInTheDocument();
+    expect(await screen.findByText("Limit added")).toBeInTheDocument();
     const row = await within(panel).findByRole("row", { name: /^vCPU/ });
     expect(row).toHaveTextContent("Set by an administrator");
     expect(row).toHaveTextContent("8");
@@ -56,7 +56,7 @@ describe("each member's quota", () => {
     await user.clear(limit);
     await user.type(limit, "64");
     await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
-    expect(await screen.findByText("Limit saved")).toBeInTheDocument();
+    expect(await screen.findByText("Limit added")).toBeInTheDocument();
     expect(quotaState(db).perUser.prj_web).toEqual([
       { resource: "memory_gb", limit: 64, enforcement: "hard", set_by_admin: false },
       { resource: "vcpu", limit: 8, enforcement: "hard", set_by_admin: true },

@@ -180,7 +180,7 @@ describe("Form library", () => {
     expect(await within(sheet).findByText("It passes.")).toBeInTheDocument();
 
     await user.click(within(sheet).getByRole("button", { name: "Create entry" }));
-    expect(await screen.findByText("Short name saved as version 1")).toBeInTheDocument();
+    expect(await screen.findByText("Short name created")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await within(table).findByRole("row", { name: /Short name/ })).toHaveTextContent("CEL expression");
   });

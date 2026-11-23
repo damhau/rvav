@@ -64,6 +64,7 @@
     "changeNamed": "Change {{name}}",
     "removeNamed": "Remove {{name}}?",
     "saved": "{{name}} saved",
+    "created": "{{name}} created",
     "removed": "{{name}} removed",
     "actionsFor": "Actions for {{name}}",
     "turnedOff": "{{name}} turned off",
@@ -216,6 +217,7 @@
       "whenExpires": "When it expires",
       "enforcementHint": "Soft: a longer lease, one more extension or one past the lifetime warns the requester instead of being refused or approved.",
       "saved": "Lease policy saved",
+      "created": "Lease policy created",
       "change": "Change the lease policy",
       "new": "New lease policy",
       "sheetLead": "How long deployments live in an environment, for every project or one; a project's own policy wins.",
@@ -347,6 +349,7 @@
     "save": "Save limit",
     "addSubmit": "Add limit",
     "saved": "Limit saved",
+    "added": "Limit added",
     "resourceLabel": "Resource",
     "twin": "This resource has a limit already: change that one.",
     "limit": "Limit",
@@ -424,6 +427,7 @@
     },
     "templates": {
       "saved": "{{name}} saved",
+      "created": "{{name}} created",
       "removed": "{{name}} removed",
       "new": "New VM template",
       "sheetLead": "VM forms offer it in their template picker, to the projects and environments below.",
@@ -459,6 +463,7 @@
     },
     "sizes": {
       "saved": "{{name}} saved",
+      "created": "{{name}} created",
       "removed": "{{name}} removed",
       "new": "New size",
       "sheetLead": "VM forms offer it in their size picker, to the projects and environments below.",
@@ -480,7 +485,8 @@
       "removeConfirm": "Remove size"
     },
     "networks": {
-      "mapped": "{{network}} mapped",
+      "saved": "{{network}} saved",
+      "added": "{{network}} added",
       "removed": "The mapping of {{network}} removed",
       "byHandTitle": "Map {{network}} by hand",
       "new": "Add a network mapping",
@@ -579,6 +585,7 @@
     "adapter": "adapter {{name}}",
     "gone": "Gone",
     "saved": "{{name}} saved",
+    "created": "{{name}} created",
     "removed": "{{name}} removed",
     "new": "New IP range",
     "sheetLead": "VMs on the network take their addresses from its ranges instead of EfficientIP. rvav writes no DNS records for them.",
@@ -750,8 +757,8 @@
     },
     "environments": {
       "saved": "{{name}} saved",
-      "added": "{{name}} added",
-      "notAdded": "Not added",
+      "created": "{{name}} created",
+      "notCreated": "Not created",
       "changeNamed": "Change {{name}}",
       "new": "New environment",
       "sheetLead": "Projects deploy to environments; a VM's name carries its environment's key.",
@@ -837,6 +844,7 @@
       "everyAny": "Every project, any environment"
     },
     "saved": "OU saved",
+    "created": "OU created",
     "changeFor": "Change the Active Directory OU for {{project}}",
     "change": "Change the Active Directory OU",
     "newFor": "New Active Directory OU for {{project}}",
@@ -955,6 +963,7 @@
     },
     "rule": {
       "saved": "Placement rule saved",
+      "created": "Placement rule created",
       "changeTitle": "Change placement rule for {{project}} in {{environment}}",
       "newTitle": "New placement rule for {{project}} in {{environment}}",
       "lead": "Names take * patterns and are comma-separated; tags are category/tag, all of them needed.",

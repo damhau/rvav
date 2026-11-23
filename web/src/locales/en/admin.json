@@ -47,8 +47,8 @@
   },
   "inventoryToken": {
     "title": "Inventory token",
-    "madeToast": "The inventory token is in AWX",
-    "noneMadeToast": "No token made",
+    "createdToast": "Inventory token created and put in AWX",
+    "notCreatedToast": "No token created",
     "locked": "Locked",
     "noneMade": "None made",
     "about": "AWX's inventory source reads rvav's VMs with an API token that reads the inventory only, kept in its rvav API credential. rvav makes it for a user of its own, valid a year, and puts it in AWX; the one made before is revoked.",
@@ -73,6 +73,7 @@
   "vcenters": {
     "test": "Test",
     "savedToast": "{{name}} saved",
+    "addedToast": "{{name}} added",
     "removedToast": "{{name}} removed",
     "notRemoved": "Not removed",
     "change": "Change {{name}}",
@@ -661,9 +662,9 @@
     "token": {
       "title": "ServiceNow's token",
       "noneMade": "None made",
-      "madeToast": "ServiceNow's token is made",
-      "notMade": "No token made",
-      "revokedToast": "ServiceNow's token is revoked",
+      "createdToast": "ServiceNow's token created",
+      "notCreated": "No token created",
+      "revokedToast": "ServiceNow's token revoked",
       "notRevoked": "The token wasn't revoked",
       "about": "ServiceNow calls rvav with an API token that only ServiceNow's endpoints take (<path>/api/v1/servicenow/</path>): it reads the catalog and requests on people's behalf what they may request themselves, nothing more. rvav makes it for a user of its own, valid a year; making a new one revokes the one before.",
       "made": "Made <made>{{made}}</made>; {{used}}.",
@@ -1071,6 +1072,7 @@
       "udp": "UDP, for labs"
     },
     "saved": "{{name}} saved",
+    "created": "{{name}} created",
     "change": "Change {{name}}",
     "new": "New destination",
     "sheetDescription": "rvav sends it each audit event written from now on, in order, and keeps those it couldn't send until it can.",

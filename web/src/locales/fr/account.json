@@ -52,7 +52,7 @@
     "days_many": "{{count}} jours",
     "days_other": "{{count}} jours",
     "year": "Un an",
-    "notMade": "Aucun jeton n'a été créé",
+    "notCreated": "Aucun jeton n'a été créé",
     "forWhat": "À quoi il sert",
     "expiresIn": "Expire dans",
     "inventoryOnly": "Inventaire Ansible seulement",

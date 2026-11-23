@@ -48,7 +48,7 @@ describe("Property groups", () => {
     expect(within(sheet).getByText("propgroup.network.<name>")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Create property group" }));
 
-    expect(await screen.findByText("Network saved as version 1")).toBeInTheDocument();
+    expect(await screen.findByText("Network created")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const row = await within(table).findByRole("row", { name: /Network/ });
     expect(row).toHaveTextContent("zone");

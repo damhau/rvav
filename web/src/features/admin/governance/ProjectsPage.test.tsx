@@ -125,7 +125,7 @@ describe("environments", () => {
     await user.type(within(sheet).getByRole("textbox", { name: "Key" }), "qa");
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Quality");
     await user.click(within(sheet).getByRole("button", { name: "Create environment" }));
-    expect(await screen.findByText("Quality added")).toBeInTheDocument();
+    expect(await screen.findByText("Quality created")).toBeInTheDocument();
     expect(await within(envs).findByRole("row", { name: /Quality/ })).toHaveTextContent("0 projects, 0 deployments");
 
     await user.click(within(envs).getByRole("button", { name: "Actions for Production" }));

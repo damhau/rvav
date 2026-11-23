@@ -71,7 +71,7 @@ describe("Policies", () => {
     await user.click(within(roles).getByRole("checkbox", { name: "Owner" }));
     await user.click(within(roles).getByRole("checkbox", { name: "Supervisor" }));
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Owners and supervisors saved")).toBeInTheDocument();
+    expect(await screen.findByText("Owners and supervisors created")).toBeInTheDocument();
     expect(adminState(db).day2.find((p) => p.name === "Owners and supervisors")).toMatchObject({
       roles: ["owner", "supervisor"],
     });
@@ -221,7 +221,7 @@ describe("Policies", () => {
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Big VMs");
     await user.type(within(sheet).getByRole("textbox", { name: "OIDC group" }), "rvav-capacity");
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Big VMs saved")).toBeInTheDocument();
+    expect(await screen.findByText("Big VMs created")).toBeInTheDocument();
     expect(await within(region).findByRole("row", { name: /Big VMs/ })).toHaveTextContent("rvav-capacity");
   });
 
@@ -241,7 +241,7 @@ describe("Policies", () => {
     await user.click(within(roles).getByRole("checkbox", { name: "Project admin" }));
     await user.click(within(sheet).getByRole("checkbox", { name: "The requester's manager" }));
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Supervised saved")).toBeInTheDocument();
+    expect(await screen.findByText("Supervised created")).toBeInTheDocument();
     expect(await within(region).findByRole("row", { name: /Supervised/ })).toHaveTextContent(
       "Supervisor, the requester's manager",
     );
@@ -310,7 +310,7 @@ describe("Policies", () => {
       await user.clear(lifetime);
       await user.type(lifetime, "60");
       await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
-      expect(await screen.findByText("Small VMs saved")).toBeInTheDocument();
+      expect(await screen.findByText("Small VMs created")).toBeInTheDocument();
 
       const row = await within(region).findByRole("row", { name: /Small VMs/ });
       expect(row).toHaveTextContent("Development, every project");
@@ -402,7 +402,7 @@ describe("Policies", () => {
       await user.click(within(sheet).getByRole("button", { name: "Preview names" }));
       expect(await within(sheet).findByText("web-dev-app110, web-dev-app120, web-dev-app130")).toBeInTheDocument();
       await user.click(within(sheet).getByRole("button", { name: "Create naming policy" }));
-      expect(await screen.findByText("Hundreds saved")).toBeInTheDocument();
+      expect(await screen.findByText("Hundreds created")).toBeInTheDocument();
       expect(await within(region).findByRole("row", { name: /Hundreds/ })).toHaveTextContent("From 100, by 10");
     },
   );
@@ -487,7 +487,7 @@ describe("Policies as a project admin", () => {
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Web Platform"]);
     await user.keyboard("{Escape}");
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Powering off web VMs saved")).toBeInTheDocument();
+    expect(await screen.findByText("Powering off web VMs created")).toBeInTheDocument();
 
     const row = await within(region).findByRole("row", { name: /Powering off web VMs/ });
     expect(row).toHaveTextContent("Soft: warns");
@@ -598,7 +598,7 @@ describe("Policies as a project admin", () => {
     await user.clear(max);
     await user.type(max, "60");
     await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
-    expect(await screen.findByText("Long builds saved")).toBeInTheDocument();
+    expect(await screen.findByText("Long builds created")).toBeInTheDocument();
     const mine = await within(region).findByRole("row", { name: /Long builds/ });
     expect(mine).not.toHaveTextContent("Set by an administrator");
     expect(within(mine).getByRole("button", { name: "Actions for Long builds" })).toBeInTheDocument();

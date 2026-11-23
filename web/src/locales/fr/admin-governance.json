@@ -64,6 +64,7 @@
     "changeNamed": "Modifier {{name}}",
     "removeNamed": "Retirer {{name}}\u00a0?",
     "saved": "{{name}} enregistrée",
+    "created": "{{name}} créée",
     "removed": "{{name}} retirée",
     "actionsFor": "Actions pour {{name}}",
     "turnedOff": "{{name}} désactivée",
@@ -218,6 +219,7 @@
       "whenExpires": "À l'échéance",
       "enforcementHint": "Souple\u00a0: un bail plus long, une prolongation de plus ou une prolongation au-delà de la durée de vie avertit le demandeur au lieu d'être refusé ou approuvé.",
       "saved": "Politique de bail enregistrée",
+      "created": "Politique de bail créée",
       "change": "Modifier la politique de bail",
       "new": "Nouvelle politique de bail",
       "sheetLead": "Combien de temps vivent les déploiements dans un environnement, pour tous les projets ou un seul\u00a0; la politique propre à un projet l'emporte.",
@@ -350,6 +352,7 @@
     "save": "Enregistrer la limite",
     "addSubmit": "Ajouter la limite",
     "saved": "Limite enregistrée",
+    "added": "Limite ajoutée",
     "resourceLabel": "Ressource",
     "twin": "Cette ressource a déjà une limite\u00a0: modifiez celle-là.",
     "limit": "Limite",
@@ -427,6 +430,7 @@
     },
     "templates": {
       "saved": "{{name}} enregistré",
+      "created": "{{name}} créé",
       "removed": "{{name}} retiré",
       "new": "Nouveau modèle de VM",
       "sheetLead": "Les formulaires de VM le proposent dans leur sélecteur de modèle, aux projets et environnements ci-dessous.",
@@ -464,6 +468,7 @@
     },
     "sizes": {
       "saved": "{{name}} enregistrée",
+      "created": "{{name}} créée",
       "removed": "{{name}} retirée",
       "new": "Nouvelle taille",
       "sheetLead": "Les formulaires de VM la proposent dans leur sélecteur de taille, aux projets et environnements ci-dessous.",
@@ -485,7 +490,8 @@
       "removeConfirm": "Retirer la taille"
     },
     "networks": {
-      "mapped": "{{network}} associé",
+      "saved": "{{network}} enregistré",
+      "added": "{{network}} ajouté",
       "removed": "La correspondance de {{network}} a été retirée",
       "byHandTitle": "Associer {{network}} à la main",
       "new": "Ajouter une correspondance de réseau",
@@ -586,6 +592,7 @@
     "adapter": "carte {{name}}",
     "gone": "Supprimé",
     "saved": "{{name}} enregistrée",
+    "created": "{{name}} créée",
     "removed": "{{name}} retirée",
     "new": "Nouvelle plage IP",
     "sheetLead": "Les VM du réseau prennent leurs adresses dans ses plages plutôt que dans EfficientIP. rvav n'écrit aucun enregistrement DNS pour elles.",
@@ -766,8 +773,8 @@
     },
     "environments": {
       "saved": "{{name}} enregistré",
-      "added": "{{name}} ajouté",
-      "notAdded": "Non ajouté",
+      "created": "{{name}} créé",
+      "notCreated": "Non créé",
       "changeNamed": "Modifier {{name}}",
       "new": "Nouvel environnement",
       "sheetLead": "Les projets déploient dans des environnements\u00a0; le nom d'une VM porte la clé de son environnement.",
@@ -856,6 +863,7 @@
       "everyAny": "Tous les projets, tout environnement"
     },
     "saved": "OU enregistrée",
+    "created": "OU créée",
     "changeFor": "Modifier l'OU Active Directory de {{project}}",
     "change": "Modifier l'OU Active Directory",
     "newFor": "Nouvelle OU Active Directory pour {{project}}",
@@ -976,6 +984,7 @@
     },
     "rule": {
       "saved": "Règle de placement enregistrée",
+      "created": "Règle de placement créée",
       "changeTitle": "Modifier la règle de placement de {{project}} dans {{environment}}",
       "newTitle": "Nouvelle règle de placement pour {{project}} dans {{environment}}",
       "lead": "Les noms acceptent des motifs * et se séparent par des virgules\u00a0; les tags s'écrivent catégorie/tag, tous requis.",

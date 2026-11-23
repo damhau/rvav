@@ -43,7 +43,7 @@ describe("deployment limits", () => {
     await user.type(within(sheet).getByRole("spinbutton", { name: "vCPU per deployment" }), "8");
     await user.type(within(sheet).getByRole("spinbutton", { name: "Deployments per user" }), "5");
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Small deployments saved")).toBeInTheDocument();
+    expect(await screen.findByText("Small deployments created")).toBeInTheDocument();
     const row = await within(region).findByRole("row", { name: /Small deployments/ });
     await waitFor(() =>
       expect(within(region).getByRole("button", { name: "New deployment limit policy" })).toHaveFocus(),
@@ -94,7 +94,7 @@ describe("deployment limits", () => {
     await user.click(await screen.findByRole("option", { name: "Soft: it warns, and the requester may go on" }));
     await user.type(within(sheet).getByRole("spinbutton", { name: "Deployments per project" }), "20");
     await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
-    expect(await screen.findByText("Web count saved")).toBeInTheDocument();
+    expect(await screen.findByText("Web count created")).toBeInTheDocument();
     const mine = await within(region).findByRole("row", { name: /Web count/ });
     expect(mine).toHaveTextContent("Soft: warns");
     expect(mine).not.toHaveTextContent("Set by an administrator");

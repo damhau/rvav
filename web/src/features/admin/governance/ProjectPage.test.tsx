@@ -289,7 +289,7 @@ describe("a project's placement and quotas", () => {
     await user.click(await screen.findByRole("option", { name: "Development" }));
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "16");
     await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
-    expect(await screen.findByText("Limit saved")).toBeInTheDocument();
+    expect(await screen.findByText("Limit added")).toBeInTheDocument();
     expect(await within(quotas).findByRole("row", { name: /^vCPU Development 16/ })).toBeInTheDocument();
   });
 

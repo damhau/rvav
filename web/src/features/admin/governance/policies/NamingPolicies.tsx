@@ -96,7 +96,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
         : call(api.POST("/admin/naming-policies", { body })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "naming"] });
-      toast.success(t("policies.saved", { name: f.name }));
+      toast.success(t(policy ? "policies.saved" : "policies.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

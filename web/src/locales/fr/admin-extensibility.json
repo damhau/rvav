@@ -10,6 +10,8 @@
     "moreActions": "Plus d'actions pour {{name}}",
     "saving": "Enregistrement…",
     "saved": "{{name}} enregistré",
+    "created": "{{name}} créé",
+    "added": "{{name}} ajouté",
     "notSaved": "Non enregistré",
     "removed": "{{name}} retiré",
     "notRemoved": "Non retiré",

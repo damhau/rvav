@@ -50,7 +50,7 @@ describe("Resource types", () => {
     await user.click(within(sheet).getByRole("checkbox", { name: /Drain/ }));
     await user.click(within(sheet).getByRole("button", { name: "Create resource type" }));
 
-    expect(await screen.findByText("DNS record saved")).toBeInTheDocument();
+    expect(await screen.findByText("DNS record created")).toBeInTheDocument();
     const row = await screen.findByRole("row", { name: /DNS record/ });
     expect(row).toHaveTextContent("Workflow · dns-alias");
     expect(row).toHaveTextContent("AWX · delete-load-balancer");

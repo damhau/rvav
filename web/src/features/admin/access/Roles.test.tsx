@@ -101,7 +101,7 @@ describe("A role's page", () => {
     await user.click(screen.getByRole("checkbox", { name: "project.see" }));
     await user.click(screen.getByRole("button", { name: "Create role" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/roles/reader"));
-    expect(await screen.findByText("Reader made")).toBeInTheDocument();
+    expect(await screen.findByText("Reader created")).toBeInTheDocument();
   });
 });
 

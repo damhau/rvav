@@ -78,7 +78,7 @@ function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
         : call(api.POST("/admin/vcenters", { body: body() })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "vcenters"] });
-      toast.success(t("vcenters.savedToast", { name: f.name }));
+      toast.success(t(vc ? "vcenters.savedToast" : "vcenters.addedToast", { name: f.name }));
       onClose();
     },
     onError: (e) => {

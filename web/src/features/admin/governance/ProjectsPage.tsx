@@ -465,13 +465,13 @@ function EnvironmentSheet({
           ),
     onSuccess: () => {
       refresh();
-      toast.success(t(existing ? "projects.environments.saved" : "projects.environments.added", { name: f.name }));
+      toast.success(t(existing ? "projects.environments.saved" : "projects.environments.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
       if (!isApiError(e) || e.fieldErrors.length === 0)
-        failed(e, existing ? t("projects.notSaved") : t("projects.environments.notAdded"));
+        failed(e, existing ? t("projects.notSaved") : t("projects.environments.notCreated"));
     },
   });
   const whole = f.snapshots.trim() !== "" && Number.isInteger(snapshots) && snapshots >= 0;

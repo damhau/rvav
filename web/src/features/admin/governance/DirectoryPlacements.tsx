@@ -87,7 +87,7 @@ function PlacementSheet({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "ad-placements"] });
-      toast.success(t("placements.saved"));
+      toast.success(t(row ? "placements.saved" : "placements.created"));
       onClose();
     },
     onError: (e) => {

@@ -250,7 +250,7 @@ function useNewDraft(item: AdminCatalogItem) {
       call(api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} })),
     onSuccess: (v) => {
       refresh();
-      toast.success(tr("item.draftMade", { number: v.number }));
+      toast.success(tr("item.draftCreated", { number: v.number }));
     },
     onError: (e) => toastError(e, tr("item.noDraft")),
   });

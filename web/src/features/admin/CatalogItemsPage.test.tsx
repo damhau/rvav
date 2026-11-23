@@ -185,7 +185,7 @@ describe("Categories and secrets", () => {
     await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "cmdb");
     await u.type(within(sheet).getByLabelText("Value"), "cmdb-token");
     await u.click(within(sheet).getByRole("button", { name: "Create secret" }));
-    expect(await screen.findByText("cmdb stored")).toBeInTheDocument();
+    expect(await screen.findByText("cmdb created")).toBeInTheDocument();
 
     await u.click(await within(region).findByRole("button", { name: "Actions for cmdb" }));
     await u.click(await screen.findByRole("menuitem", { name: "Remove" }));

@@ -99,7 +99,7 @@ function PolicySheet({
     // The policies are read again before the sheet closes, so the focus can go to what replaces the empty state.
     onSuccess: async () => {
       await refresh();
-      toast.success(t("policies.saved", { name: f.name }));
+      toast.success(t(policy ? "policies.saved" : "policies.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

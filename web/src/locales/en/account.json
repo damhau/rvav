@@ -50,7 +50,7 @@
     "days_one": "{{count}} day",
     "days_other": "{{count}} days",
     "year": "A year",
-    "notMade": "No token was made",
+    "notCreated": "No token was created",
     "forWhat": "What it is for",
     "expiresIn": "Expires in",
     "inventoryOnly": "Ansible inventory only",

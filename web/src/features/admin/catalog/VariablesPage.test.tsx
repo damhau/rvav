@@ -51,7 +51,7 @@ describe("Variables", () => {
     expect(within(sheet).getByLabelText("Value")).toHaveAccessibleDescription(/^Not JSON/);
     await user.paste("]");
     await user.click(within(sheet).getByRole("button", { name: "Create variable" }));
-    expect(await screen.findByText("vars.monitoring.targets added")).toBeInTheDocument();
+    expect(await screen.findByText("vars.monitoring.targets created")).toBeInTheDocument();
     const row = await screen.findByRole("row", { name: /vars\.monitoring\.targets/ });
     expect(row).toHaveTextContent("web, db");
 

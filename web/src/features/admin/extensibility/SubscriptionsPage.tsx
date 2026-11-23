@@ -220,7 +220,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
     },
     onSuccess: () => {
       invalidate(qc);
-      toast.success(t("shared.saved", { name: f.name }));
+      toast.success(t(sub ? "shared.saved" : "shared.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

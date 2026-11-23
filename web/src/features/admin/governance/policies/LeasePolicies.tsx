@@ -149,7 +149,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
     mutationFn: () => call(api.PUT("/admin/lease-policies", { body: f })),
     onSuccess: () => {
       void refresh();
-      toast.success(t("policies.lease.saved"));
+      toast.success(t(lease ? "policies.lease.saved" : "policies.lease.created"));
       onClose();
     },
     onError: (e) => {

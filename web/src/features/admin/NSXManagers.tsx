@@ -110,7 +110,7 @@ function ManagerSheet({ m, managers, onClose }: { m?: Manager; managers: Manager
         : call(api.POST("/admin/nsx-managers", { body: body() })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "nsx-managers"] });
-      toast.success(t("vcenters.savedToast", { name: f.name }));
+      toast.success(t(m ? "vcenters.savedToast" : "vcenters.addedToast", { name: f.name }));
       onClose();
     },
     onError: (e) => {

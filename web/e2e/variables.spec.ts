@@ -34,7 +34,7 @@ test("a catalog admin keeps a shared variable from the keyboard", async ({ page 
   await page.keyboard.press("Tab");
   await page.keyboard.type("The hosts the agent watches.");
   await page.keyboard.press("Enter");
-  await expect(page.getByText("vars.monitoring.targets added")).toBeVisible();
+  await expect(page.getByText("vars.monitoring.targets created")).toBeVisible();
   const row = page.getByRole("row", { name: /vars\.monitoring\.targets/ });
   await expect(row).toContainText("web, db");
   await expect(row).toContainText("List");

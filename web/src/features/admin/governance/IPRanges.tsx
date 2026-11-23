@@ -129,7 +129,7 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
     },
     onSuccess: () => {
       invalidate(qc);
-      toast.success(t("ipRanges.saved", { name: f.name }));
+      toast.success(t(range ? "ipRanges.saved" : "ipRanges.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

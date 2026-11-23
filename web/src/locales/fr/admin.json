@@ -47,8 +47,8 @@
   },
   "inventoryToken": {
     "title": "Jeton d'inventaire",
-    "madeToast": "Le jeton d'inventaire est dans AWX",
-    "noneMadeToast": "Aucun jeton créé",
+    "createdToast": "Jeton d'inventaire créé et placé dans AWX",
+    "notCreatedToast": "Aucun jeton créé",
     "locked": "Verrouillé",
     "noneMade": "Aucun créé",
     "about": "La source d'inventaire d'AWX lit les VM de rvav avec un jeton d'API qui ne lit que l'inventaire, gardé dans son identifiant rvav API. rvav le crée pour un utilisateur à lui, valable un an, et le place dans AWX\u00a0; celui créé auparavant est révoqué.",
@@ -73,6 +73,7 @@
   "vcenters": {
     "test": "Test",
     "savedToast": "{{name}} enregistré",
+    "addedToast": "{{name}} ajouté",
     "removedToast": "{{name}} retiré",
     "notRemoved": "Non retiré",
     "change": "Modifier {{name}}",
@@ -681,9 +682,9 @@
     "token": {
       "title": "Jeton de ServiceNow",
       "noneMade": "Aucun créé",
-      "madeToast": "Le jeton de ServiceNow est créé",
-      "notMade": "Aucun jeton créé",
-      "revokedToast": "Le jeton de ServiceNow est révoqué",
+      "createdToast": "Jeton de ServiceNow créé",
+      "notCreated": "Aucun jeton créé",
+      "revokedToast": "Jeton de ServiceNow révoqué",
       "notRevoked": "Le jeton n'a pas été révoqué",
       "about": "ServiceNow appelle rvav avec un jeton d'API que seuls les points d'accès de ServiceNow acceptent (<path>/api/v1/servicenow/</path>)\u00a0: il lit le catalogue et demande, au nom des personnes, ce qu'elles peuvent demander elles-mêmes, rien de plus. rvav le crée pour un utilisateur qui lui est propre, valable un an\u00a0; en créer un nouveau révoque le précédent.",
       "made": "Créé le <made>{{made}}</made>\u00a0; {{used}}.",
@@ -1104,6 +1105,7 @@
       "udp": "UDP, pour les labos"
     },
     "saved": "{{name}} enregistrée",
+    "created": "{{name}} créée",
     "change": "Modifier {{name}}",
     "new": "Nouvelle destination",
     "sheetDescription": "rvav lui envoie chaque événement d'audit écrit à partir de maintenant, dans l'ordre, et garde ceux qu'il n'a pas pu envoyer jusqu'à ce qu'il le puisse.",

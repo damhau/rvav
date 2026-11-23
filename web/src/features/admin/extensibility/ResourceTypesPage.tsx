@@ -193,7 +193,7 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
       void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
       // What the composite designer offers to steps is made from them.
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.compositeSteps });
-      toast.success(t("shared.saved", { name: f.title }));
+      toast.success(t(type ? "shared.saved" : "shared.created", { name: f.title }));
       onClose();
     },
     onError: (e) => {

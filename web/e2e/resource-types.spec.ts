@@ -68,11 +68,11 @@ test("an administrator defines a resource type; one deployments have can't be re
   await pick(page, deletes, "Job template", "delete-load-balancer");
   await dialog.getByRole("checkbox", { name: /Drain/ }).click();
   await dialog.getByRole("button", { name: "Create resource type" }).click();
-  await expect(page.getByText("DNS record saved")).toBeVisible();
+  await expect(page.getByText("DNS record created")).toBeVisible();
   await expect(page.getByRole("row", { name: /DNS record/ })).toContainText("AWX · delete-load-balancer");
   // A toast under the pointer stays: Sonner pauses it while hovered.
   await page.mouse.move(0, 0);
-  await expect(page.getByText("DNS record saved")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByText("DNS record created")).toHaveCount(0, { timeout: 10_000 });
 
   await sheetInBothThemes(
     page,

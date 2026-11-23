@@ -26,7 +26,7 @@ test("a three-tier item's topology beside its YAML, as it is edited", async ({ p
   await page.goto("/admin/catalog-items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "Three-tier application" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
+  await expect(page.getByText(/^Draft [\d.]+ created from the published version/)).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
 
   // Its tiers, their disks, their segment, their groups and the rules

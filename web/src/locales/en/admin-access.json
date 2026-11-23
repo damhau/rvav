@@ -135,7 +135,7 @@
     "deleteConsequences": "Nobody holds it now, and no day-2 policy names it: nobody loses a permission.",
     "deleteRole": "Delete role",
     "saved": "{{name}} saved",
-    "made": "{{name}} made",
+    "created": "{{name}} created",
     "notSaved": "Not saved",
     "panel": "Role",
     "key": "Key",

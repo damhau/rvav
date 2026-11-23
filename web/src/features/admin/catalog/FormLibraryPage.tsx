@@ -275,7 +275,10 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       const drafts = e.drafts ?? [];
       const made = drafts.filter((d) => !d.problem);
       const stuck = drafts.filter((d) => d.problem);
-      toast.success(t("library.saved", { name: e.name, version: e.version }), {
+      const done = existing
+        ? t("library.saved", { name: e.name, version: e.version })
+        : t("library.created", { name: e.name });
+      toast.success(done, {
         description:
           [
             made.length

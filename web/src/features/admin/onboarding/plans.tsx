@@ -171,7 +171,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
     },
     onSuccess: (p) => {
       invalidateOnboarding(qc);
-      toast.success(t("plans.saved", { name: p.name }));
+      toast.success(t(plan ? "plans.saved" : "plans.created", { name: p.name }));
       onClose();
       if (!plan) void navigate({ to: "/admin/onboarding/plans/$planId", params: { planId: p.id } });
     },

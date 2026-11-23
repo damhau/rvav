@@ -100,7 +100,7 @@ function LineSheet({
       onSubmit={() =>
         save.mutate(items, {
           onSuccess: () => {
-            toast.success(t("quota.saved"));
+            toast.success(t(existing ? "quota.saved" : "quota.added"));
             onClose();
           },
         })

@@ -36,9 +36,9 @@ export function ServiceNowToken() {
     onSuccess: () => {
       setRenewing(false);
       refresh();
-      toast.success(t("serviceNow.token.madeToast"));
+      toast.success(t("serviceNow.token.createdToast"));
     },
-    onError: (e) => failed(e, t("serviceNow.token.notMade")),
+    onError: (e) => failed(e, t("serviceNow.token.notCreated")),
   });
   const revoke = useMutation({
     mutationFn: () => call(api.DELETE("/admin/integrations/servicenow/token")),

@@ -17,7 +17,7 @@ test("draft, publish and roll back a version of an item", async ({ page }) => {
 
   // A draft from the published version.
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await expect(page.getByText("Draft 3.3 created from the published version")).toBeVisible();
 
   // Its definition as YAML: a broken one shows where, a valid one is saved.
   await page.getByRole("tab", { name: "Definition" }).click();
@@ -78,7 +78,7 @@ test("create an item and a category", async ({ page }) => {
   await sheet.getByRole("textbox", { name: "Key" }).fill("storage");
   await sheet.getByRole("textbox", { name: "Name" }).fill("Storage");
   await sheet.getByRole("button", { name: "Create category" }).click();
-  await expect(page.getByText("Storage added")).toBeVisible();
+  await expect(page.getByText("Storage created")).toBeVisible();
   await expect(categories.getByText("storage", { exact: true })).toBeVisible();
 });
 
@@ -162,7 +162,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await secret.getByRole("textbox", { name: "Name" }).fill("cmdb");
   await secret.getByLabel("Value").fill("cmdb-token");
   await secret.getByRole("button", { name: "Create secret" }).click();
-  await expect(page.getByText("cmdb stored")).toBeVisible();
+  await expect(page.getByText("cmdb created")).toBeVisible();
 
   await page.getByRole("tab", { name: "Items" }).click();
   await page.getByRole("button", { name: "New item" }).click();
@@ -236,7 +236,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   // 1.1 renames the field; rolled back, members get 1.0 again.
   await backToItem();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText("Draft 1.1 made from the published version")).toBeVisible();
+  await expect(page.getByText("Draft 1.1 created from the published version")).toBeVisible();
   await page.getByRole("tab", { name: "Form designer" }).click();
   await fields.getByRole("button", { name: /^Backup policy/ }).click();
   await props.getByRole("textbox", { name: "Label", exact: true }).fill("Backup schedule");
@@ -260,7 +260,7 @@ test("designer changes survive tab switches, saved or refused", async ({ page })
   await page.goto("/admin/catalog-items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await expect(page.getByText("Draft 3.3 created from the published version")).toBeVisible();
   await page.getByRole("tab", { name: "Form designer" }).click();
   const fields = page.getByRole("region", { name: "Fields" });
   const props = page.getByRole("region", { name: "Properties" });
@@ -326,7 +326,7 @@ test("a property group, changed as a new version", async ({ page }) => {
   await sheet.locator("#pg-const-0-key").fill("dns_domain");
   await sheet.locator("#pg-const-0-value").fill("corp.example");
   await sheet.getByRole("button", { name: "Create property group", exact: true }).click();
-  await expect(page.getByText("Network saved as version 1")).toBeVisible();
+  await expect(page.getByText("Network created")).toBeVisible();
   const row = table.getByRole("row", { name: /Network/ });
   await expect(row).toContainText("zone");
 
@@ -434,7 +434,7 @@ test("an earlier version kept requestable is picked on the request form", async 
   await page.goto("/admin/catalog-items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await expect(page.getByText("Draft 3.3 created from the published version")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Actions for version 3.3" }).click();
   await page.getByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }).click();
@@ -470,7 +470,7 @@ test("Version keeps the keyboard focus when another version is picked", async ({
   await page.goto("/admin/catalog-items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await expect(page.getByText("Draft 3.3 created from the published version")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Actions for version 3.3" }).click();
   await page.getByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }).click();

@@ -114,7 +114,7 @@ describe("A blocking subscription on a VM's topic", () => {
     await user.click(url);
     await user.paste("https://hooks.corp.example/rvav/ipam-down");
     await user.click(within(sheet).getByRole("button", { name: "Create subscription" }));
-    expect(await screen.findByText("IPAM address saved")).toBeInTheDocument();
+    expect(await screen.findByText("IPAM address created")).toBeInTheDocument();
   }, 15_000);
 
   it("shows its recovery target, and what each run changed on the VM", async () => {

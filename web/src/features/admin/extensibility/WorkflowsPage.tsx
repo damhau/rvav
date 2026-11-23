@@ -102,7 +102,7 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
-      toast.success(t("shared.saved", { name: f.title }));
+      toast.success(t(wf ? "shared.saved" : "shared.added", { name: f.title }));
       onClose();
     },
     onError: (e) => {

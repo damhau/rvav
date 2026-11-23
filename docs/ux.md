@@ -276,6 +276,15 @@ Every text a person reads is in English and in French
   **Créer** and **Ajouter**: **Nouveau projet**, **Créer le projet**,
   **Ajouter un champ**. A button that does something other than store a
   form says what it does: **Import**, **Adopt 12 VMs**, **Request**.
+
+  The toast after the button uses the button's verb: "Payments names
+  created" after **Create**, "Limit added" after **Add**, "RHEL 9.4 saved"
+  after **Save**. A form that both creates and changes a record says
+  created when the record is new and saved when it existed. French agrees
+  the verb with the noun: **créé** or **créée**, **ajouté** or **ajoutée**,
+  **enregistré** or **enregistrée** ("Règle de placement créée", "Limite
+  ajoutée"). A toast that says nothing was stored uses the same verb: "No
+  token created".
 - **Environments by name.** A page says **Production**, not `prd`: in its
   badges, lists, sheet titles, options and sentences. The key shows only
   where an administrator types or reads it: the environment's own form and

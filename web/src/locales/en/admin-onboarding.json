@@ -57,6 +57,7 @@
     "runs": "{{name}} runs",
     "notRun": "Not run",
     "saved": "{{name}} saved",
+    "created": "{{name}} created",
     "notSaved": "Not saved",
     "deleted": "{{name}} deleted",
     "notDeleted": "Not deleted",

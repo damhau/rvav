@@ -119,7 +119,7 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
         : call(api.POST("/admin/variables", { body: { group, name, value, description } })),
     onSuccess: (v) => {
       void qc.invalidateQueries({ queryKey: adm.variables().queryKey });
-      toast.success(existing ? t("variables.saved", { ref: refOf(v) }) : t("variables.added", { ref: refOf(v) }));
+      toast.success(existing ? t("variables.saved", { ref: refOf(v) }) : t("variables.created", { ref: refOf(v) }));
       onClose();
     },
     onError: (e) => {

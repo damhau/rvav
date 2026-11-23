@@ -56,7 +56,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await choose(page, "Resource", "VMs");
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");
   await limit.getByRole("button", { name: "Add limit" }).click();
-  await expect(page.getByText("Limit saved")).toBeVisible();
+  await expect(page.getByText("Limit added")).toBeVisible();
 
   // Its own naming policy.
   await nav(page, "Policies");
@@ -68,7 +68,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await naming.getByRole("button", { name: "Add an offer" }).click();
   await choose(page, "Offer 1: project", "Payments");
   await naming.getByRole("button", { name: "Create naming policy" }).click();
-  await expect(page.getByText("Payments names saved")).toBeVisible();
+  await expect(page.getByText("Payments names created")).toBeVisible();
 
   // A template offered to it.
   await nav(page, "Templates and networks");

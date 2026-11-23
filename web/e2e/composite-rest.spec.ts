@@ -15,7 +15,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
   await page.goto("/admin/catalog-items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "PostgreSQL 16 cluster" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
+  await expect(page.getByText(/^Draft [\d.]+ created from the published version/)).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: /^Definition of PostgreSQL 16 cluster/ });
   const steps = page.getByRole("region", { name: "Steps of PostgreSQL 16 cluster" });

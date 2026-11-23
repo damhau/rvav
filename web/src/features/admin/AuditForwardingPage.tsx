@@ -149,7 +149,7 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
         : call(api.POST("/admin/audit-destinations", { body: bodyOf(d) })),
     onSuccess: (saved) => {
       invalidate(qc);
-      toast.success(t("auditForwarding.saved", { name: saved.name }));
+      toast.success(t(dest ? "auditForwarding.saved" : "auditForwarding.created", { name: saved.name }));
       onClose();
     },
     onError: (e) => {

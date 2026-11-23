@@ -308,7 +308,7 @@ function RoleForm({
     },
     onSuccess: (r) => {
       changed();
-      toast.success(role ? t("role.saved", { name: r.name }) : t("role.made", { name: r.name }));
+      toast.success(role ? t("role.saved", { name: r.name }) : t("role.created", { name: r.name }));
       if (!role) void navigate({ to: "/admin/roles/$roleKey", params: { roleKey: r.key } });
     },
     onError: (e) => {

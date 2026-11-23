@@ -301,7 +301,7 @@ describe("the item's Git tab", () => {
     const u = userEvent.setup();
     renderApp("/admin/catalog-items/ubuntu-server");
     await u.click(await screen.findByRole("button", { name: "New draft" }));
-    expect(await screen.findByText(/Draft 2\.5 made/)).toBeInTheDocument();
+    expect(await screen.findByText(/Draft 2\.5 created/)).toBeInTheDocument();
     await u.click(screen.getByRole("tab", { name: "Git" }));
     const git = await screen.findByRole("region", { name: "Git" });
     await u.click(await within(git).findByRole("button", { name: "Take the repository's" }));

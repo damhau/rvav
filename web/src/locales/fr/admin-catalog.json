@@ -102,7 +102,7 @@
   },
   "categories": {
     "saved": "{{name}} enregistrée",
-    "added": "{{name}} ajoutée",
+    "created": "{{name}} créée",
     "notSaved": "La catégorie n'a pas été enregistrée",
     "change": "Modifier {{name}}",
     "new": "Nouvelle catégorie",
@@ -140,7 +140,7 @@
       "header": "En-tête"
     },
     "replaced": "{{name}} remplacé",
-    "stored": "{{name}} stocké",
+    "created": "{{name}} créé",
     "notStored": "Le secret n'a pas été stocké",
     "replaceTitle": "Remplacer {{name}}",
     "new": "Nouveau secret",
@@ -345,7 +345,7 @@
       "unreadable": "il ne peut pas être lu"
     },
     "saved": "{{ref}} enregistrée",
-    "added": "{{ref}} ajoutée",
+    "created": "{{ref}} créée",
     "notSaved": "La variable n'a pas été enregistrée",
     "change": "Modifier {{ref}}",
     "new": "Nouvelle variable",
@@ -431,7 +431,7 @@
     "refusedSteps_one": "Un problème dans sa définition, signalé sur sa ligne et son étape.",
     "refusedSteps_many": "{{count}} problèmes dans sa définition, signalés sur leurs lignes et leurs étapes.",
     "refusedSteps_other": "{{count}} problèmes dans sa définition, signalés sur leurs lignes et leurs étapes.",
-    "draftMade": "Brouillon {{number}} créé à partir de la version publiée",
+    "draftCreated": "Brouillon {{number}} créé à partir de la version publiée",
     "noDraft": "Aucun brouillon n'a été créé",
     "waiting": "{{label}}\u00a0: attend la modification en cours",
     "col": {
@@ -549,6 +549,7 @@
     "removeInput": "Retirer l'entrée {{name}}",
     "remove": "Retirer",
     "saved": "{{name}} enregistré en version {{version}}",
+    "created": "{{name}} créé",
     "notSaved": "Le groupe de propriétés n'a pas été enregistré",
     "change": "Modifier {{name}}",
     "new": "Nouveau groupe de propriétés",
@@ -643,6 +644,7 @@
     "options_many": "{{count}} options",
     "options_other": "{{count}} options",
     "saved": "{{name}} enregistrée en version {{version}}",
+    "created": "{{name}} créée",
     "draftsNaming": "Brouillons qui la nomment\u00a0: {{drafts}}.",
     "draft": "{{name}} {{number}}",
     "draftNew": "{{name}} {{number}} (nouveau)",

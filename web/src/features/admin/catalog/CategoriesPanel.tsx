@@ -59,7 +59,7 @@ function CategorySheet({
     },
     onSuccess: () => {
       refresh();
-      toast.success(existing ? t("categories.saved", { name }) : t("categories.added", { name }));
+      toast.success(existing ? t("categories.saved", { name }) : t("categories.created", { name }));
       onClose();
     },
     onError: (e) => {

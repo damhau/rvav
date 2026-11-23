@@ -57,7 +57,7 @@ test("a conflict: both sides, settled for the repository's change", async ({ pag
   // confirmation.
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText(/Draft 2\.5 made/)).toBeVisible();
+  await expect(page.getByText(/Draft 2\.5 created/)).toBeVisible();
   await page.getByRole("tab", { name: "Git" }).click();
   await git.getByRole("button", { name: "Take the repository's" }).click();
   const confirm = page.getByRole("alertdialog", { name: "Discard draft 2.5?" });
@@ -88,7 +88,7 @@ test("a conflict settled for rvav, and committed at the next read; a publish wai
   await page.getByRole("link", { name: "Catalog items" }).first().click();
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
   await page.getByRole("button", { name: "New draft" }).click();
-  await expect(page.getByText(/Draft 3\.3 made/)).toBeVisible();
+  await expect(page.getByText(/Draft 3\.3 created/)).toBeVisible();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("3.3 published")).toBeVisible();
   await expect(page.getByText("Waiting to be committed").first()).toBeVisible();

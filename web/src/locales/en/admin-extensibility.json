@@ -10,6 +10,8 @@
     "moreActions": "More actions for {{name}}",
     "saving": "Saving…",
     "saved": "{{name}} saved",
+    "created": "{{name}} created",
+    "added": "{{name}} added",
     "notSaved": "Not saved",
     "removed": "{{name}} removed",
     "notRemoved": "Not removed",

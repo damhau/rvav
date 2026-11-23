@@ -60,7 +60,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await expect(rule.getByText("Name the networks VMs may connect to.")).toBeVisible();
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-*-dev-*");
   await rule.getByRole("button", { name: "Create rule" }).click();
-  await expect(page.getByText("Placement rule saved")).toBeVisible();
+  await expect(page.getByText("Placement rule created")).toBeVisible();
   const preview = page.getByRole("region", { name: "What Payments gets in Development" });
   await expect(preview).toContainText("GVA-DEV-CL01");
   await expect(preview).toContainText("dvpg-app-dev-vl310 10.31.10.0/24");
@@ -72,7 +72,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("16");
   await choose(page, "In", "Development");
   await limit.getByRole("button", { name: "Add limit" }).click();
-  await expect(page.getByText("Limit saved")).toBeVisible();
+  await expect(page.getByText("Limit added")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Quotas" }).getByRole("row", { name: /^vCPU Development 16/ }),
   ).toBeVisible();
@@ -154,7 +154,7 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await expect(ap.getByText(/Say whom to escalate to/)).toBeVisible();
   await ap.getByRole("textbox", { name: "Escalate to OIDC group" }).fill("rvav-infra-heads");
   await ap.getByRole("button", { name: "Create policy" }).click();
-  await expect(page.getByText("Big VMs saved")).toBeVisible();
+  await expect(page.getByText("Big VMs created")).toBeVisible();
   const approvals = page.getByRole("region", { name: "Approval policies" });
   // Both at priority 100: moving the first down still swaps them.
   const move = async (region: typeof approvals, policy: string, where: "up" | "down") => {
@@ -194,7 +194,7 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await expect(lease.getByText("The default can't be longer than the maximum.")).toBeVisible();
   await lease.getByRole("spinbutton", { name: "Lease, in days" }).fill("14");
   await lease.getByRole("button", { name: "Create lease policy" }).click();
-  await expect(page.getByText("Lease policy saved")).toBeVisible();
+  await expect(page.getByText("Lease policy created")).toBeVisible();
   const leases = page.getByRole("region", { name: "Lease policies" });
   await leases.getByRole("button", { name: "Actions for the lease in Development", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();

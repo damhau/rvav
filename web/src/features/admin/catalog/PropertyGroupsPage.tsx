@@ -305,7 +305,9 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
     },
     onSuccess: (g) => {
       void qc.invalidateQueries({ queryKey: groupsKey });
-      toast.success(t("groups.saved", { name: g.name, version: g.version }));
+      toast.success(
+        existing ? t("groups.saved", { name: g.name, version: g.version }) : t("groups.created", { name: g.name }),
+      );
       onClose();
     },
     onError: (e) => {

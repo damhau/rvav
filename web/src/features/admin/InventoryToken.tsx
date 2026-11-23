@@ -34,11 +34,11 @@ export function InventoryToken() {
     onSuccess: () => {
       setErrors({});
       void qc.invalidateQueries({ queryKey: ["admin", "inventory-token"] });
-      toast.success(t("inventoryToken.madeToast"));
+      toast.success(t("inventoryToken.createdToast"));
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, t("inventoryToken.noneMadeToast"));
+      failed(e, t("inventoryToken.notCreatedToast"));
     },
   });
   const form = useRef<HTMLFormElement>(null);

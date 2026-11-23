@@ -27,7 +27,7 @@ test("a webhook subscription: checked, saved, tested; a failed run tried again",
   await expect(dialog.getByText(/^example\.org is not one of the hosts webhooks may call/)).toBeVisible();
   await dialog.getByRole("textbox", { name: "URL" }).fill("https://hooks.corp.example/rvav");
   await dialog.getByRole("button", { name: "Create subscription" }).click();
-  await expect(page.getByText("Inventory feed saved")).toBeVisible();
+  await expect(page.getByText("Inventory feed created")).toBeVisible();
 
   // Tested with the topic's sample event.
   await page.getByRole("button", { name: "Actions for Inventory feed" }).click();
@@ -72,7 +72,7 @@ test("register a custom workflow; one still running can't be removed", async ({ 
   await expect(dialog.getByText("The type ends with its major version")).toBeVisible();
   await dialog.getByRole("textbox", { name: "Workflow type" }).fill("cmdb.sync.v1");
   await dialog.getByRole("button", { name: "Add workflow" }).click();
-  await expect(page.getByText("CMDB sync saved")).toBeVisible();
+  await expect(page.getByText("CMDB sync added")).toBeVisible();
   await expect(page.getByRole("row", { name: /CMDB sync/ })).toContainText("Subscription target");
 
   // Still running: Remove says why it can't, and turning it off is offered.

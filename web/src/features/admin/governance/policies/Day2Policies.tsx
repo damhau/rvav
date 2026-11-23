@@ -195,7 +195,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
     },
     onSuccess: () => {
       void refresh();
-      toast.success(t("policies.saved", { name: f.name }));
+      toast.success(t(policy ? "policies.saved" : "policies.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

@@ -39,7 +39,7 @@ test("an approval level asks project roles and the requester's manager", async (
   await press(page, manager, "Space");
   await expect(manager).toBeChecked();
   await press(page, sheet.getByRole("button", { name: "Create policy" }));
-  await expect(page.getByText("Supervised saved")).toBeVisible();
+  await expect(page.getByText("Supervised created")).toBeVisible();
   await expect(region.getByRole("row", { name: /Supervised/ })).toContainText("Supervisor, the requester's manager");
 
   // The theme button is behind the modal sheet: the sheet is opened in each theme.

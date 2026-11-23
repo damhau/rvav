@@ -97,7 +97,7 @@
   },
   "categories": {
     "saved": "{{name}} saved",
-    "added": "{{name}} added",
+    "created": "{{name}} created",
     "notSaved": "The category wasn't saved",
     "change": "Change {{name}}",
     "new": "New category",
@@ -135,7 +135,7 @@
       "header": "Header"
     },
     "replaced": "{{name}} replaced",
-    "stored": "{{name}} stored",
+    "created": "{{name}} created",
     "notStored": "The secret wasn't stored",
     "replaceTitle": "Replace {{name}}",
     "new": "New secret",
@@ -334,7 +334,7 @@
       "unreadable": "it can't be read"
     },
     "saved": "{{ref}} saved",
-    "added": "{{ref}} added",
+    "created": "{{ref}} created",
     "notSaved": "The variable wasn't saved",
     "change": "Change {{ref}}",
     "new": "New variable",
@@ -418,8 +418,8 @@
     "refusedLines_other": "{{count}} problems in its definition, shown on their lines.",
     "refusedSteps_one": "A problem in its definition, shown on their lines and steps.",
     "refusedSteps_other": "{{count}} problems in its definition, shown on their lines and steps.",
-    "draftMade": "Draft {{number}} made from the published version",
-    "noDraft": "No draft was made",
+    "draftCreated": "Draft {{number}} created from the published version",
+    "noDraft": "No draft was created",
     "waiting": "{{label}}: waits for the change running",
     "col": {
       "version": "Version",
@@ -535,6 +535,7 @@
     "removeInput": "Remove input {{name}}",
     "remove": "Remove",
     "saved": "{{name}} saved as version {{version}}",
+    "created": "{{name}} created",
     "notSaved": "The property group wasn't saved",
     "change": "Change {{name}}",
     "new": "New property group",
@@ -628,6 +629,7 @@
     "options_one": "{{count}} option",
     "options_other": "{{count}} options",
     "saved": "{{name}} saved as version {{version}}",
+    "created": "{{name}} created",
     "draftsNaming": "Drafts naming it: {{drafts}}.",
     "draft": "{{name}} {{number}}",
     "draftNew": "{{name}} {{number}} (new)",

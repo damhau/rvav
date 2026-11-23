@@ -74,7 +74,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
     },
     onSuccess: () => {
       void refresh();
-      toast.success(t("policies.saved", { name: f.name }));
+      toast.success(t(policy ? "policies.saved" : "policies.created", { name: f.name }));
       onClose();
     },
     onError: (e) => {

@@ -54,7 +54,8 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
       // The value lives on the page only, not in the query cache.
       make.reset();
     },
-    onError: (e) => toast.error(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.title) : t("tokens.notMade")),
+    onError: (e) =>
+      toast.error(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.title) : t("tokens.notCreated")),
   });
   return (
     <form

@@ -58,6 +58,7 @@
     "runs": "{{name}} est lancé",
     "notRun": "Non lancé",
     "saved": "{{name}} enregistré",
+    "created": "{{name}} créé",
     "notSaved": "Non enregistré",
     "deleted": "{{name}} supprimé",
     "notDeleted": "Non supprimé",

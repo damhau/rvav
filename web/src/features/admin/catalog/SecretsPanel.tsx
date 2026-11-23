@@ -78,7 +78,7 @@ function SecretSheet({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: secretsKey });
-      toast.success(existing ? t("secrets.replaced", { name: w.name }) : t("secrets.stored", { name: w.name }));
+      toast.success(existing ? t("secrets.replaced", { name: w.name }) : t("secrets.created", { name: w.name }));
       onClose();
     },
     onError: (e) => {
