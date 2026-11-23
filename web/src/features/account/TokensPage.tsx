@@ -4,18 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { ErrorState, SkeletonRows } from "@/components/common/feedback";
+import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
@@ -23,6 +24,11 @@ import { copyText } from "@/lib/utils";
 import { relative } from "@/lib/format";
 
 const durations = [30, 90, 180];
+
+type ApiToken = components["schemas"]["ApiToken"];
+
+/** A time to sort by, none for a token never used or one that never expires. */
+const when = (iso?: string | null) => (iso ? Date.parse(iso) : null);
 
 function NewToken({ onMade }: { onMade: (token: string) => void }) {
   const { t } = useTranslation("account");
@@ -101,7 +107,60 @@ export function TokensPage() {
     },
     onError: (e) => toast.error(isApiError(e) ? e.problem.title : t("tokens.notRevoked")),
   });
-  const list = tokens.data?.items ?? [];
+  const all: Column<ApiToken>[] = [
+    {
+      id: "token",
+      header: t("tokens.token"),
+      sortValue: (token) => token.name,
+      cell: (token) => (
+        <>
+          <div className="font-medium">{token.name}</div>
+          <div className="text-caption text-faint">
+            {t(token.scope === "inventory" ? "tokens.inventoryOnly" : "tokens.everything")} ·{" "}
+            {t("tokens.made", { when: relative(token.created_at) })}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "owner",
+      header: t("tokens.owner"),
+      sortValue: (token) => token.user.name,
+      className: "text-secondary",
+      cell: (token) => token.user.name,
+    },
+    {
+      id: "lastUsed",
+      header: t("tokens.lastUsed"),
+      sortValue: (token) => when(token.last_used_at),
+      className: "text-secondary text-muted",
+      cell: (token) => (token.last_used_at ? relative(token.last_used_at) : t("tokens.never")),
+    },
+    {
+      id: "expires",
+      header: t("tokens.expires"),
+      sortValue: (token) => when(token.expires_at),
+      className: "text-secondary text-muted",
+      cell: (token) => (token.expires_at ? relative(token.expires_at) : t("tokens.never")),
+    },
+    {
+      id: "revoke",
+      header: t("tokens.actions"),
+      hideHeader: true,
+      align: "end",
+      cell: (token) => (
+        <Button
+          size="sm"
+          variant="quiet"
+          aria-label={t("tokens.revokeName", { name: token.name })}
+          onClick={() => setRevoking({ id: token.id, name: token.name })}
+        >
+          {t("tokens.revoke")}
+        </Button>
+      ),
+    },
+  ];
+  const columns = all.filter((c) => everyone || c.id !== "owner");
   return (
     <Page>
       <PageHeader title={t("shell:topBar.apiTokens")} description={t("tokens.lead")} />
@@ -146,66 +205,16 @@ export function TokensPage() {
           )
         }
       >
-        {tokens.isPending && <SkeletonRows rows={2} cols={5} />}
-        {tokens.isError && <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />}
-        {tokens.data && list.length === 0 && <EmptyState title={t("tokens.none")} body={t("tokens.noneBody")} />}
-        {list.length > 0 && (
-          <ScrollRegion label={t(everyone ? "tokens.everyones" : "tokens.yours")}>
-            <table className="w-full min-w-[640px] border-collapse text-body">
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                    {t("tokens.token")}
-                  </th>
-                  {everyone && (
-                    <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                      {t("tokens.owner")}
-                    </th>
-                  )}
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    {t("tokens.lastUsed")}
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    {t("tokens.expires")}
-                  </th>
-                  <th scope="col" className="border-b border-line px-4 py-2">
-                    <span className="sr-only">{t("tokens.actions")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((token) => (
-                  <tr key={token.id} className="hover:bg-sunken">
-                    <td className="border-b border-line px-4 py-2">
-                      <div className="font-medium">{token.name}</div>
-                      <div className="text-caption text-faint">
-                        {t(token.scope === "inventory" ? "tokens.inventoryOnly" : "tokens.everything")} ·{" "}
-                        {t("tokens.made", { when: relative(token.created_at) })}
-                      </div>
-                    </td>
-                    {everyone && <td className="border-b border-line px-3 py-2 text-secondary">{token.user.name}</td>}
-                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {token.last_used_at ? relative(token.last_used_at) : t("tokens.never")}
-                    </td>
-                    <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {token.expires_at ? relative(token.expires_at) : t("tokens.never")}
-                    </td>
-                    <td className="border-b border-line px-4 py-2 text-right">
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        aria-label={t("tokens.revokeName", { name: token.name })}
-                        onClick={() => setRevoking({ id: token.id, name: token.name })}
-                      >
-                        {t("tokens.revoke")}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollRegion>
-        )}
+        <DataTable
+          label={t(everyone ? "tokens.everyones" : "tokens.yours")}
+          columns={columns}
+          rows={tokens.data?.items}
+          rowKey={(token) => token.id}
+          minWidth={640}
+          loading={tokens.isPending}
+          error={tokens.isError && <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />}
+          empty={<EmptyState title={t("tokens.none")} body={t("tokens.noneBody")} />}
+        />
       </Panel>
       {revoking && (
         <ConfirmDialog
