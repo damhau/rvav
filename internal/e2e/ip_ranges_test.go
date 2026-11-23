@@ -170,10 +170,19 @@ func TestIPRanges(t *testing.T) {
 			t.Errorf("usage = %d used, %d free", a.Used, a.Free)
 		}
 
-		// Given addresses stay: the range can't lose them or move.
+		// Given addresses stay: the range can't lose them or move, and each
+		// refusal is at the field that would lose them.
 		changed := labRange("Lab", "10.32.20.11", "10.32.20.20", "10.32.20.12", "10.32.20.15-10.32.20.16", "10.32.20.19")
 		changed.Gateway = "10.32.20.2"
-		refused("PUT", "/api/v1/admin/ip-ranges/"+a.Id, changed, "/excluded in_use, /network in_use, /start_address in_use")
+		refused("PUT", "/api/v1/admin/ip-ranges/"+a.Id, changed, "/excluded/2 in_use, /gateway in_use, /start_address in_use")
+		gateway := labRange("Lab", "10.32.20.10", "10.32.20.20", "10.32.20.12", "10.32.20.15-10.32.20.16")
+		gateway.Gateway = "10.32.20.11"
+		refused("PUT", "/api/v1/admin/ip-ranges/"+a.Id, gateway, "/gateway in_use")
+		end := labRange("Lab", "10.32.20.10", "10.32.20.19", "10.32.20.12", "10.32.20.15-10.32.20.16")
+		refused("PUT", "/api/v1/admin/ip-ranges/"+a.Id, end, "/end_address in_use")
+		moved := labRange("Lab", "10.32.20.10", "10.32.20.20", "10.32.20.12", "10.32.20.15-10.32.20.16")
+		moved.Network = "dvpg-app-dev-vl310"
+		refused("PUT", "/api/v1/admin/ip-ranges/"+a.Id, moved, "/network in_use")
 		renamed := labRange("Lab apps", "10.32.20.10", "10.32.20.40", "10.32.20.12", "10.32.20.15-10.32.20.16")
 		h.json("PUT", "/api/v1/admin/ip-ranges/"+a.Id, admin, renamed, 200, &a)
 		if a.Name != "Lab apps" || a.Size != 28 || a.Free != 20 {

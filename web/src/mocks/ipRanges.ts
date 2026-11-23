@@ -338,20 +338,37 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
       ),
     );
   if (old && given.length > 0) {
-    if (old.vcenter !== w.vcenter || old.network !== w.network || old.cidr !== subnet || old.gateway !== w.gateway)
-      out.push(
-        err(
-          "/network",
-          "in_use",
-          `${given.length === 1 ? "A VM holds 1 address" : `VMs hold ${given.length} addresses`} from this range: its vCenter, network, subnet and gateway can't change.`,
-        ),
-      );
+    const holders = given.length === 1 ? "A VM holds 1 address" : `VMs hold ${given.length} addresses`;
+    const kept: [string, boolean][] = [
+      ["/vcenter", old.vcenter === w.vcenter],
+      ["/network", old.network === w.network],
+      ["/cidr", old.cidr === subnet],
+      ["/gateway", old.gateway === w.gateway],
+    ];
+    for (const [field, same] of kept)
+      if (!same)
+        out.push(
+          err(field, "in_use", `${holders} from this range: its vCenter, network, subnet and gateway can't change.`),
+        );
     const ok = usable({ ...r, cidr: subnet });
+    const spans = r.excluded.map(spanOf);
     for (const g of given) {
       const n = toInt(g.address)!;
       if (ok(n)) continue;
-      const field = n < start! ? "/start_address" : n > end! ? "/end_address" : "/excluded";
-      out.push(err(field, "in_use", `A VM holds ${g.address}: the range must keep it.`));
+      const span = spans.findIndex((s) => s !== undefined && n >= s[0] && n <= s[1]);
+      const field =
+        n < start!
+          ? "/start_address"
+          : n > end!
+            ? "/end_address"
+            : n === gateway
+              ? "/gateway"
+              : span >= 0
+                ? `/excluded/${span}`
+                : "/cidr";
+      // An address lost to a new gateway or subnet is refused there already, as the server does.
+      if (field !== "/gateway" && field !== "/cidr")
+        out.push(err(field, "in_use", `A VM holds ${g.address}: the range must keep it.`));
     }
   }
   return out;

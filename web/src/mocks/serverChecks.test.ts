@@ -69,7 +69,7 @@ describe("the IP range mock", () => {
     });
   });
 
-  it("says an address a VM holds at the bound that would lose it", async () => {
+  it("says an address a VM holds at the field that would lose it, the gateway and the end included", async () => {
     const range = await call(api.GET("/admin/ip-ranges/{id}", { params: { path: { id: "ipr_lab" } } }));
     const body: S["IpRangeWrite"] = {
       ...lab(),
@@ -78,9 +78,18 @@ describe("the IP range mock", () => {
       end_address: range.end_address,
       excluded: range.excluded,
     };
-    expect(await fields(call(api.PUT("/admin/ip-ranges/{id}", { params: { path: { id: "ipr_lab" } }, body })))).toEqual(
-      { status: 422, at: ["/start_address in_use"] },
-    );
+    const put = (over: Partial<S["IpRangeWrite"]>) =>
+      fields(
+        call(api.PUT("/admin/ip-ranges/{id}", { params: { path: { id: "ipr_lab" } }, body: { ...body, ...over } })),
+      );
+    expect(await put({})).toEqual({ status: 422, at: ["/start_address in_use"] });
+    const kept = { start_address: range.start_address };
+    expect(await put({ ...kept, gateway: "10.41.10.2" })).toEqual({ status: 422, at: ["/gateway in_use"] });
+    expect(await put({ ...kept, end_address: "10.41.10.204" })).toEqual({ status: 422, at: ["/end_address in_use"] });
+    expect(await put({ ...kept, excluded: [...range.excluded, "10.41.10.205"] })).toEqual({
+      status: 422,
+      at: ["/excluded/2 in_use"],
+    });
   });
 
   it("refuses a field the write doesn't take, and a caller who doesn't manage the infrastructure", async () => {

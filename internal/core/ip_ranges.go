@@ -226,28 +226,50 @@ func checkIPRange(r store.IPRange, rg iprange.Range, old *store.IPRange, others 
 	if old == nil || len(given) == 0 {
 		return errs
 	}
-	if old.VCenter != r.VCenter || old.Network != r.Network || old.CIDR != r.CIDR || old.Gateway != r.Gateway {
-		holders := fmt.Sprintf("VMs hold %d addresses", len(given))
-		if len(given) == 1 {
-			holders = "A VM holds 1 address"
+	holders := fmt.Sprintf("VMs hold %d addresses", len(given))
+	if len(given) == 1 {
+		holders = "A VM holds 1 address"
+	}
+	for _, f := range []struct {
+		field string
+		same  bool
+	}{{"/vcenter", old.VCenter == r.VCenter}, {"/network", old.Network == r.Network}, {"/cidr", old.CIDR == r.CIDR},
+		{"/gateway", old.Gateway == r.Gateway}} {
+		if !f.same {
+			bad(f.field, "in_use", "%s from this range: its vCenter, network, subnet and gateway can't change.", holders)
 		}
-		bad("/network", "in_use", "%s from this range: its vCenter, network, subnet and gateway can't change.", holders)
 	}
 	for _, g := range given {
 		a, err := netip.ParseAddr(g)
 		if err != nil || rg.Usable(a) {
 			continue
 		}
-		field := "/excluded"
-		switch {
-		case a.Less(rg.Start):
-			field = "/start_address"
-		case rg.End.Less(a):
-			field = "/end_address"
+		// An address lost to a new gateway or subnet is refused there already.
+		if field := lostAt(rg, a); field != "/gateway" && field != "/cidr" {
+			bad(field, "in_use", "A VM holds %s: the range must keep it.", g)
 		}
-		bad(field, "in_use", "A VM holds %s: the range must keep it.", g)
 	}
 	return errs
+}
+
+// lostAt is the field of a range's write that keeps it from giving an
+// address: its start or end, the gateway, the exclusion holding it, or
+// the subnet.
+func lostAt(rg iprange.Range, a netip.Addr) string {
+	switch {
+	case a.Less(rg.Start):
+		return "/start_address"
+	case rg.End.Less(a):
+		return "/end_address"
+	case a == rg.Gateway:
+		return "/gateway"
+	}
+	for i, s := range rg.Excluded {
+		if !a.Less(s.From) && !s.To.Less(a) {
+			return fmt.Sprintf("/excluded/%d", i)
+		}
+	}
+	return "/cidr"
 }
 
 // newlyTaken are the addresses VMs hold otherwise that the range gives

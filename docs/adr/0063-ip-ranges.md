@@ -55,7 +55,10 @@ refused with the other range's name. The saves of one vCenter's ranges
 take turns (a transaction advisory lock on the vCenter's name), so two
 overlapping ranges saved at once aren't both accepted. A range from which VMs hold
 addresses keeps its vCenter, network, subnet and gateway, and keeps those
-addresses in, and can't be deleted (409).
+addresses in, and can't be deleted (409). A change that would break this is
+refused with the code `in_use` at the field that would lose the addresses:
+the one of the four that changed, or the start, the end or the exclusion
+(`/excluded/<i>`) that leaves a held address out (#210).
 
 IPv4 only: a blueprint asking for IPv6 on a network with ranges is refused
 when the request is evaluated.
