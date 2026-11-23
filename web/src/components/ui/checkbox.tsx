@@ -10,11 +10,13 @@ export function Checkbox({
   className,
   "aria-label": ariaLabel,
   "aria-describedby": describedBy,
+  "aria-invalid": invalid,
 }: {
   id?: string;
   /** The checkbox's name when no label element names it. */
   "aria-label"?: string;
   "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
@@ -25,6 +27,7 @@ export function Checkbox({
       id={id}
       aria-label={ariaLabel}
       aria-describedby={describedBy}
+      aria-invalid={invalid}
       checked={checked}
       disabled={disabled}
       onCheckedChange={(v) => onChange(v === true)}

@@ -2,7 +2,7 @@
 // or not, and the channels they want each kind on, in their language.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -13,11 +13,12 @@ import { Panel } from "@/components/ui/panel";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field } from "@/components/ui/input";
+import { Field, FieldNote } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, call } from "@/lib/api/client";
+import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { Me } from "@/lib/api/types";
 import { applyLocale, currentLocale, isLocale, localeNames, locales, type Locale } from "@/lib/i18n";
@@ -36,6 +37,29 @@ const differs = (kind: string, chs: Channel[]) => {
   const d = defaultChannels(kind as S["NotificationKind"]);
   return d.length !== chs.length || d.some((c) => !chs.includes(c));
 };
+
+type Rule = { kind: string; channels: Channel[] };
+
+/**
+ * A refusal's problems by what they are about: `locale`, a kind's row, and
+ * `kind/channel` for the checkbox to fix (the row's first when the channel
+ * named isn't one). Its pointers count the rules as sent.
+ */
+function problemsOf(e: unknown, sent: Rule[]): Record<string, string> {
+  if (!isApiError(e)) return {};
+  const out: Record<string, string> = {};
+  for (const f of e.fieldErrors) {
+    if (f.field === "/locale") out.locale ??= f.message;
+    const at = /^\/rules\/(\d+)(?:\/channels\/(\d+))?/.exec(f.field);
+    const rule = at ? sent[Number(at[1])] : undefined;
+    if (!at || !rule) continue;
+    const named = at[2] === undefined ? undefined : rule.channels[Number(at[2])];
+    const channel = channels.find((c) => c === named) ?? channels[0];
+    out[rule.kind] ??= f.message;
+    out[`${rule.kind}/${channel}`] ??= f.message;
+  }
+  return out;
+}
 
 function List() {
   const { t } = useTranslation("notifications");
@@ -121,6 +145,8 @@ function Preferences() {
     if (me.locale) setLocale(me.locale);
   }
   const [rules, setRules] = useState<Record<string, Channel[]>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const sent = useRef<Rule[]>([]);
   useEffect(() => {
     if (!prefs.data) return;
     setRules(
@@ -128,18 +154,20 @@ function Preferences() {
     );
   }, [prefs.data]);
   const save = useMutation({
-    mutationFn: () =>
-      call(
+    mutationFn: () => {
+      // Only kinds that differ from the defaults: the others follow them.
+      sent.current = Object.entries(rules)
+        .filter(([kind, chs]) => differs(kind, chs))
+        .map(([kind, chs]) => ({ kind, channels: chs }));
+      return call(
         api.PUT("/me/notification-preferences", {
           body: {
             locale,
-            // Only kinds that differ from the defaults: the others follow them.
-            rules: Object.entries(rules)
-              .filter(([kind, chs]) => differs(kind, chs))
-              .map(([kind, chs]) => ({ kind: kind as S["NotificationKind"], channels: chs })),
+            rules: sent.current.map((r) => ({ kind: r.kind as S["NotificationKind"], channels: r.channels })),
           },
         }),
-      ),
+      );
+    },
     onSuccess: async (saved) => {
       qc.setQueryData(q.notificationPreferences().queryKey, saved);
       qc.setQueryData<Me>(keys.me, (m) => m && { ...m, locale: saved.locale });
@@ -147,13 +175,19 @@ function Preferences() {
       await applyLocale(saved.locale);
       toast.success(t("prefs.saved"));
     },
-    onError: (e) => failed(e, t("prefs.notSaved")),
+    onError: (e) => {
+      setErrors(problemsOf(e, sent.current));
+      failed(e, t("prefs.notSaved"));
+    },
   });
   const test = useMutation({
     mutationFn: (channel: Channel) => call(api.POST("/me/notification-preferences/test", { body: { channel } })),
     onSuccess: (r) => (r.ok ? toast.success(r.message) : toast.error(t("prefs.notSent"), { description: r.message })),
     onError: (e) => failed(e, t("prefs.notSent")),
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   if (prefs.isPending) return <SkeletonRows rows={6} cols={4} />;
   if (prefs.isError) return <ErrorState error={prefs.error} onRetry={() => void prefs.refetch()} />;
   const reach = Object.fromEntries(prefs.data.channels.map((c) => [c.channel, c]));
@@ -197,9 +231,15 @@ function Preferences() {
       </Panel>
       <Panel title={t("prefs.where")}>
         <form
+          ref={form}
           className="flex flex-col gap-4"
+          onKeyDownCapture={saveFocus.interacted}
+          onPointerDownCapture={saveFocus.interacted}
           onSubmit={(e) => {
             e.preventDefault();
+            if (save.isPending) return;
+            setErrors({});
+            saveFocus.submitted();
             save.mutate();
           }}
         >
@@ -207,6 +247,7 @@ function Preferences() {
             label={t("shell:topBar.language")}
             hint={t("prefs.languageHint")}
             htmlFor="notif-locale"
+            error={errors.locale}
             className="max-w-xs"
           >
             <Select
@@ -244,6 +285,7 @@ function Preferences() {
                           <span className="ml-2 text-caption text-faint">{t("prefs.default")}</span>
                         )}
                         <div className="text-secondary text-muted">{kind.hint}</div>
+                        <FieldNote id={`notif-${r.kind}-note`} error={errors[r.kind]} />
                       </th>
                       <td className="border-b border-line px-3 py-2">
                         <Checkbox
@@ -257,6 +299,8 @@ function Preferences() {
                         <td key={ch} className="border-b border-line px-3 py-2">
                           <Checkbox
                             aria-label={t("prefs.by", { kind: kind.label, channel: channelLabel(ch) })}
+                            aria-invalid={errors[`${r.kind}/${ch}`] ? true : undefined}
+                            aria-describedby={errors[`${r.kind}/${ch}`] ? `notif-${r.kind}-note` : undefined}
                             disabled={!reach[ch]?.available}
                             checked={(rules[r.kind] ?? []).includes(ch)}
                             onChange={(on) => toggle(r.kind, ch, on)}
@@ -270,7 +314,7 @@ function Preferences() {
             </table>
           </ScrollRegion>
           <div className="flex justify-end">
-            <Button type="submit" variant="primary" disabled={save.isPending}>
+            <Button ref={submit} type="submit" variant="primary" disabled={save.isPending}>
               {t("prefs.save")}
             </Button>
           </div>

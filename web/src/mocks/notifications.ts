@@ -31,6 +31,32 @@ const kinds: Kind[] = [
   "step_message",
 ];
 
+/** What is wrong with preferences to save, as the server's SetNotificationPreferences. */
+export function preferenceProblems(b: S["NotificationPreferencesWrite"]): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  if (b.locale !== "en" && b.locale !== "fr") errors.push({ field: "/locale", code: "invalid", message: "en or fr." });
+  const seen = new Set<string>();
+  b.rules.forEach((r, i) => {
+    const at = `/rules/${i}`;
+    if (!kinds.includes(r.kind))
+      return void errors.push({
+        field: `${at}/kind`,
+        code: "invalid",
+        message: `${r.kind} is not a kind of notification.`,
+      });
+    if (seen.has(r.kind))
+      return void errors.push({ field: `${at}/kind`, code: "duplicate", message: "One rule per kind." });
+    seen.add(r.kind);
+    r.channels.forEach((ch, j) => {
+      const field = `${at}/channels/${j}`;
+      if (ch === "in_app") errors.push({ field, code: "invalid", message: "In the app is always on." });
+      else if (!["email", "teams", "slack"].includes(ch))
+        errors.push({ field, code: "invalid", message: `${ch} is not a channel.` });
+    });
+  });
+  return errors;
+}
+
 function defaults(kind: Kind): Channel[] {
   if (kind === "approval_needed" || kind === "step_message") return ["email", "teams", "slack"];
   if (["request_succeeded", "request_failed", "request_rejected", "lease_expiring", "lease_expired"].includes(kind))
@@ -182,6 +208,8 @@ export function notificationHandlers(db: Db, base: string, wait: () => Promise<v
     http.put(`${base}/me/notification-preferences`, async ({ request }) => {
       await wait();
       const b = (await request.json()) as S["NotificationPreferencesWrite"];
+      const errors = preferenceProblems(b);
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
       const st = state(db);
       choose(db, b.locale);
       st.rules = Object.fromEntries(b.rules.map((r) => [r.kind, r.channels as Channel[]]));

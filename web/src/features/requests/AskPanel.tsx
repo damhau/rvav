@@ -10,6 +10,7 @@ import { ApprovalHistory, dueText } from "@/components/common/approvals";
 import { Time } from "@/components/common/misc";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -44,10 +45,20 @@ function Question({
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 text-secondary font-medium">
-          <Checkbox id={id} checked={value === true} onChange={onChange} />
+          <Checkbox
+            id={id}
+            checked={value === true}
+            onChange={onChange}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-note` : undefined}
+          />
           <label htmlFor={id}>{field.label}</label>
         </div>
-        {error && <p className="text-secondary text-bad">{error}</p>}
+        {error && (
+          <p id={`${id}-note`} className="text-secondary text-bad">
+            {error}
+          </p>
+        )}
       </div>
     );
   const required = field.required ? <span className="text-secondary text-faint">{t("ask.required")}</span> : undefined;
@@ -88,7 +99,6 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
   const question = approval.question;
   const form = question?.form ?? [];
   const commentId = `ask-${approval.id}-comment`;
-  const commentRef = useRef<HTMLTextAreaElement>(null);
   const [values, setValues] = useState<Record<string, Value>>(() =>
     Object.fromEntries(form.map((f) => [f.key, initial(f)])),
   );
@@ -127,12 +137,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
       const found = isApiError(e) ? (e.problem.errors ?? []) : [];
       const next = Object.fromEntries(found.map((f) => [f.field, f.message]));
       setErrors(next);
-      const first = found.find((f) => f.field.startsWith("/answer/") || f.field === "/comment");
-      if (first) {
-        if (first.field === "/comment") commentRef.current?.focus();
-        else document.getElementById(fieldId(approval.id, first.field.slice("/answer/".length)))?.focus();
-        return;
-      }
+      if (found.some((f) => f.field.startsWith("/answer/") || f.field === "/comment")) return;
       // Answered by someone else meanwhile, or no longer asked.
       void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(approval.request.id) });
       toast.error(isApiError(e) ? e.problem.title : t("ask.notSent"), {
@@ -141,10 +146,14 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
     },
   });
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(formRef, answer.isPending, () => submit.current);
+
   const reject = () => {
+    saveFocus.submitted();
     if (!comment.trim()) {
       setErrors({ "/comment": t("ask.sayWhy") });
-      commentRef.current?.focus();
       return;
     }
     answer.mutate("reject");
@@ -152,10 +161,15 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
 
   return (
     <form
+      ref={formRef}
       aria-label={t("ask.yourAnswer", { level: approval.level.name })}
       className="flex flex-col gap-3"
+      onKeyDownCapture={saveFocus.interacted}
+      onPointerDownCapture={saveFocus.interacted}
       onSubmit={(e) => {
         e.preventDefault();
+        if (answer.isPending) return;
+        saveFocus.submitted();
         answer.mutate("approve");
       }}
     >
@@ -194,7 +208,6 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
       >
         <Textarea
           id={commentId}
-          ref={commentRef}
           value={comment}
           onChange={(e) => {
             setComment(e.target.value);
@@ -203,7 +216,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
         />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" variant="primary" disabled={answer.isPending}>
+        <Button ref={submit} type="submit" variant="primary" disabled={answer.isPending}>
           {form.length > 0 ? t("ask.send") : t("ask.approve")}
         </Button>
         {form.length === 0 && (
