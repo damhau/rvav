@@ -325,7 +325,7 @@ func (s *Service) DeleteSchedule(ctx context.Context, p *auth.Principal, id stri
 	if err := s.Store.DeleteSchedule(ctx, sc.ID); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "schedule.delete", "schedule", sc.ID, &sc.ProjectID, map[string]any{"name": sc.Name})
+	s.auditGone(ctx, p, "schedule.delete", "schedule", sc.ID, sc.Name, &sc.ProjectID, map[string]any{"name": sc.Name})
 	return nil
 }
 

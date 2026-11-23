@@ -111,7 +111,7 @@ func submitOnce[T any](s *Server, w http.ResponseWriter, r *http.Request, key st
 		switch {
 		case rec.BodyHash != hash:
 			s.problem(w, r, http.StatusConflict, "idempotency-key-reused", "This Idempotency-Key was used for another request",
-				"Generate a new key for each new submission.", nil)
+				"Use a new key for each submission.", nil)
 		case rec.StatusCode == nil:
 			s.problem(w, r, http.StatusConflict, "in-progress", "This request is still being submitted",
 				"Wait a moment, then retry with the same key.", nil)

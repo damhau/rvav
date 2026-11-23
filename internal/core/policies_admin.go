@@ -349,29 +349,30 @@ func (s *Service) LevelRoles(ctx context.Context, p *auth.Principal) ([]api.Role
 	return s.projectRoles(ctx)
 }
 
-// Day2PolicyRoles are the roles a day-2 policy may name, with their names:
-// the deployment's owner, the built-in roles in day2RoleNames, then the
-// custom roles.
-func (s *Service) Day2PolicyRoles(ctx context.Context, p *auth.Principal) ([]api.RoleRef, error) {
+// Day2PolicyRoles are the roles a day-2 policy's approval levels may name,
+// as LevelRoles, and those the policy itself may, with their names: the
+// deployment's owner, the built-in roles in day2RoleNames, then the custom
+// roles.
+func (s *Service) Day2PolicyRoles(ctx context.Context, p *auth.Principal) (levels, policy []api.RoleRef, err error) {
 	if !readsPolicies(p) {
-		return nil, ErrForbidden
+		return nil, nil, ErrForbidden
 	}
 	list, err := s.Store.Roles(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	out := []api.RoleRef{{Key: "owner", Name: "Owner"}}
+	policy = []api.RoleRef{{Key: "owner", Name: "Owner"}}
 	for _, key := range day2RoleNames[1:] {
 		if r, ok := auth.BuiltinRole(key); ok {
-			out = append(out, api.RoleRef{Key: r.Key, Name: r.Name})
+			policy = append(policy, api.RoleRef{Key: r.Key, Name: r.Name})
 		}
 	}
 	for _, st := range list {
 		if !st.BuiltIn {
-			out = append(out, api.RoleRef{Key: st.Key, Name: st.Name})
+			policy = append(policy, api.RoleRef{Key: st.Key, Name: st.Name})
 		}
 	}
-	return out, nil
+	return projectRoleRefs(list), policy, nil
 }
 
 // LevelUsers are the users levels name, as approvers or to escalate to, by
@@ -409,6 +410,10 @@ func (s *Service) projectRoles(ctx context.Context) ([]api.RoleRef, error) {
 	if err != nil {
 		return nil, err
 	}
+	return projectRoleRefs(list), nil
+}
+
+func projectRoleRefs(list []store.StoredRole) []api.RoleRef {
 	out := []api.RoleRef{}
 	for _, st := range list {
 		r, ok := auth.BuiltinRole(st.Key)
@@ -419,7 +424,7 @@ func (s *Service) projectRoles(ctx context.Context) ([]api.RoleRef, error) {
 			out = append(out, api.RoleRef{Key: r.Key, Name: r.Name})
 		}
 	}
-	return out, nil
+	return out
 }
 
 func presentApprovalPolicy(pol store.AdminApprovalPolicy) api.ApprovalPolicy {
@@ -682,7 +687,7 @@ func (s *Service) DeleteDay2Policy(ctx context.Context, p *auth.Principal, id st
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "policy.day2.delete", "day2_policy", id, old.ProjectID, nil)
+	s.auditGone(ctx, p, "policy.day2.delete", "day2_policy", id, old.Name, old.ProjectID, nil)
 	return nil
 }
 

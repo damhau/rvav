@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -18,14 +19,17 @@ var auditTargets = []struct{ typ, name string }{
 	{"user", "select name from users where id = %s"},
 	{"api_token", "select name from api_tokens where id = %s"},
 	{"environment", "select name from environments where key = %s"},
+	// An environment's lease, audited by the environment's key.
+	{"lease_policy", "select name from environments where key = %s"},
 	{"subscription", "select name from subscriptions where id = %s"},
-	{"schedule", "select name from schedules where id = %s"},
+	{"schedule", "select name from schedules where id = %s and deleted_at is null"},
 	{"onboarding_plan", "select name from onboarding_plans where id = %s"},
 	{"workflow", "select title from workflow_registrations where key = %s"},
 	{"resource_type", "select title from resource_types where key = %s"},
 	{"form_library", "select name from form_library where key = %s order by version desc limit 1"},
 	{"property_group", "select name from property_groups where key = %s order by version desc limit 1"},
 	{"approval_policy", "select name from approval_policies where id = %s"},
+	{"day2_policy", "select name from day2_policies where id = %s"},
 	{"lease_rule", "select name from lease_rules where id = %s"},
 	{"naming_policy", "select name from naming_policies where id = %s"},
 	{"deployment_limit_policy", "select name from deployment_limit_policies where id = %s"},
@@ -33,6 +37,23 @@ var auditTargets = []struct{ typ, name string }{
 	{"size_preset", "select label from size_presets where key = %s"},
 	{"ip_range", "select name from ip_ranges where id = %s"},
 	{"audit_destination", "select name from audit_destinations where id = %s"},
+}
+
+// TargetName is what the audit log calls a target now, for a deletion to
+// keep: "" for a type it doesn't name, a target gone, or a failed read,
+// which leaves the event the name an earlier one recorded.
+func (s *Store) TargetName(ctx context.Context, typ, id string) string {
+	for _, t := range auditTargets {
+		if t.typ != typ {
+			continue
+		}
+		var name *string
+		if err := s.Pool.QueryRow(ctx, fmt.Sprintf(t.name, "$1"), id).Scan(&name); err != nil || name == nil {
+			return ""
+		}
+		return *name
+	}
+	return ""
 }
 
 // targetNameSQL is the SQL for the current name of the target of the

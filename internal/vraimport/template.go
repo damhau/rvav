@@ -291,7 +291,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		bindings := map[string]any{}
 		if img, _ := r.Properties["image"].(string); img != "" {
 			if strings.Contains(img, "${") {
-				note(Unmapped, where+".image", "The image comes from an input ("+img+"): an rvav item builds from one template per component. Make an item per image, or a size-like choice in a later version.")
+				note(Unmapped, where+".image", "The image comes from an input ("+img+"): an rvav item builds from one template per component. Create an item per image, or a size-like choice in a later version.")
 			} else if needsCatalogue(e, img) {
 				key := ImageKeys(e)[img]
 				bindings["template"] = strconv.Quote(key)

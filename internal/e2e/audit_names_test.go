@@ -18,6 +18,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auditlog"
+	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -159,6 +160,44 @@ func TestAuditTargetNames(t *testing.T) {
 		h.json("DELETE", "/api/v1/admin/roles/names-operator", admin, nil, 204, nil)
 		check("role.create", "names-operator", "VM operator", false)
 		check("role.delete", "names-operator", "VM operator", false)
+
+		// A size made as the seed makes records, with no event, then
+		// deleted: the deletion keeps its name.
+		if _, err := h.store.Pool.Exec(ctx, `insert into size_presets (key, label, vcpu, memory_gb, disk_gb)
+			values ('names-xl', 'Extra large names', 8, 32, 100)`); err != nil {
+			t.Fatal(err)
+		}
+		h.json("DELETE", "/api/v1/admin/sizes/names-xl", admin, nil, 204, nil)
+		check("size.delete", "names-xl", "Extra large names", false)
+
+		// A day-2 policy, deleted.
+		var freeze api.Day2Policy
+		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "Names freeze", Effect: api.Day2PolicyWriteEffectDeny,
+			Actions: &[]string{"snapshot_*"}}, 201, &freeze)
+		check("policy.day2.create", freeze.Id, "Names freeze", true)
+		h.json("DELETE", "/api/v1/admin/day2-policies/"+freeze.Id, admin, nil, 204, nil)
+		check("policy.day2.delete", freeze.Id, "Names freeze", false)
+
+		// An environment's lease is named after the environment.
+		h.json("PUT", "/api/v1/admin/lease-policies", admin, api.LeasePolicy{Environment: "dev", DefaultDays: new(3), MaxDays: new(7),
+			ExpiryAction: api.PowerOffThenDelete}, 200, nil)
+		check("policy.lease.set", "dev", "Development", true)
+
+		// A schedule deleted is gone from the log too, though rvav keeps its
+		// row for the requests it started.
+		if _, err := h.store.Pool.Exec(ctx, `insert into schedules (id, name, item_id, version_id, project_id, environment, owner_id, every_minutes)
+			select 'sch_names', 'Nightly names', v.item_id, v.id, $1, 'dev', $2, 60 from catalog_item_versions v limit 1`,
+			seed.ProjectID("web"), seed.UserID("tnguyen")); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.store.Audit(ctx, h.store.Pool, store.AuditEvent{Action: "schedule.pause", TargetType: "schedule", TargetID: "sch_names"}); err != nil {
+			t.Fatal(err)
+		}
+		check("schedule.pause", "sch_names", "Nightly names", true)
+		if err := h.store.DeleteSchedule(ctx, "sch_names"); err != nil {
+			t.Fatal(err)
+		}
+		check("schedule.pause", "sch_names", "Nightly names", false)
 
 		// A target rvav doesn't keep as a record of its own has no name.
 		h.json("PUT", "/api/v1/admin/branding", admin, api.BrandingWrite{Name: "Names cloud"}, 200, nil)

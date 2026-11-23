@@ -69,11 +69,11 @@ used, with the built-in roles unchanged.
 | `environments.read` | R | See the environments. | admin, auditor |
 | `environments.manage` | R | Add, change and remove environments. | admin |
 | `access.read` | R | See the roles and who holds them, through groups too. | admin, auditor |
-| `access.manage` | R | Make roles and give them to users and groups, anywhere. | admin |
+| `access.manage` | R | Create roles and give them to users and groups, anywhere. | admin |
 | `catalog.manage` | R | Build, publish and open catalog items, with their categories, YAML, Git repository, AWX templates, secrets and shared variables; read what their steps were given and gave. | admin, catalog-admin |
 | `infrastructure.read` | R | See templates, sizes, network mappings and vCenters. | admin, auditor |
 | `infrastructure.manage` | R | Change templates, sizes and network mappings, and reconcile IPAM. | admin |
-| `integrations.manage` | R | See, set and test the identity provider and every connection (vCenters included), and make the inventory token and ServiceNow's. | admin |
+| `integrations.manage` | R | See, set and test the identity provider and every connection (vCenters included), and create the inventory token and ServiceNow's. | admin |
 | `policies.read` | R | See the approval, day-2, lease and naming policies. | admin, auditor |
 | `policies.manage` | R | Change them. | admin |
 | `extensibility.read` | R | See event subscriptions, their runs, custom workflows and custom resource types; read the shared variables and what composite steps were given and gave. | admin, auditor |

@@ -107,6 +107,7 @@ func (s *Service) DeletePropertyGroup(ctx context.Context, p *auth.Principal, ke
 	if !p.Everywhere(auth.CatalogManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "property_group", key)
 	users, err := s.Store.DeletePropertyGroup(ctx, key)
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
@@ -116,7 +117,7 @@ func (s *Service) DeletePropertyGroup(ctx context.Context, p *auth.Principal, ke
 	if len(users) > 0 {
 		return &ConflictError{Msg: "Items use this property group: " + strings.Join(users, ", ") + "."}
 	}
-	s.auditGroup(ctx, p, "property_group.delete", key, nil)
+	s.auditGone(ctx, p, "property_group.delete", "property_group", key, name, nil, nil)
 	return nil
 }
 

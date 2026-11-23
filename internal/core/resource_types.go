@@ -226,7 +226,8 @@ func (s *Service) DeleteResourceType(ctx context.Context, p *auth.Principal, key
 	if !p.Everywhere(auth.ExtensibilityManage) {
 		return ErrForbidden
 	}
-	if _, err := s.Store.GetResourceType(ctx, key); errors.Is(err, store.ErrNotFound) {
+	rt, err := s.Store.GetResourceType(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -244,6 +245,6 @@ func (s *Service) DeleteResourceType(ctx context.Context, p *auth.Principal, key
 	if err := s.Store.DeleteResourceType(ctx, key); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "resource_type.delete", "resource_type", key, nil, nil)
+	s.auditGone(ctx, p, "resource_type.delete", "resource_type", key, rt.Title, nil, nil)
 	return nil
 }

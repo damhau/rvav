@@ -137,6 +137,7 @@ func (s *Service) DeleteFormLibraryEntry(ctx context.Context, p *auth.Principal,
 	if !p.Everywhere(auth.CatalogManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "form_library", key)
 	users, err := s.Store.DeleteLibraryEntry(ctx, key)
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
@@ -146,7 +147,7 @@ func (s *Service) DeleteFormLibraryEntry(ctx context.Context, p *auth.Principal,
 	if len(users) > 0 {
 		return &ConflictError{Msg: "Items use this entry: " + strings.Join(users, ", ") + "."}
 	}
-	s.auditLibrary(ctx, p, "form_library.delete", key, nil)
+	s.auditGone(ctx, p, "form_library.delete", "form_library", key, name, nil, nil)
 	return nil
 }
 

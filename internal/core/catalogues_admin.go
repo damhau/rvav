@@ -175,12 +175,13 @@ func (s *Service) DeleteVMTemplate(ctx context.Context, p *auth.Principal, key s
 	if !p.Everywhere(auth.InfrastructureManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "vm_template", key)
 	if err := s.Store.DeleteVMTemplate(ctx, key); errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "template.delete", "vm_template", key, nil, nil)
+	s.auditGone(ctx, p, "template.delete", "vm_template", key, name, nil, nil)
 	return nil
 }
 
@@ -264,12 +265,13 @@ func (s *Service) DeleteSizePreset(ctx context.Context, p *auth.Principal, key s
 	if !p.Everywhere(auth.InfrastructureManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "size_preset", key)
 	if err := s.Store.DeleteSizePreset(ctx, key); errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "size.delete", "size_preset", key, nil, nil)
+	s.auditGone(ctx, p, "size.delete", "size_preset", key, name, nil, nil)
 	return nil
 }
 

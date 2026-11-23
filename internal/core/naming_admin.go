@@ -201,12 +201,13 @@ func (s *Service) DeleteNamingPolicy(ctx context.Context, p *auth.Principal, id 
 	if !p.Everywhere(auth.PoliciesManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "naming_policy", id)
 	if err := s.Store.DeleteNamingPolicy(ctx, id); errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "naming.delete", "naming_policy", id, nil, nil)
+	s.auditGone(ctx, p, "naming.delete", "naming_policy", id, name, nil, nil)
 	return nil
 }
 

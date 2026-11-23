@@ -59,10 +59,7 @@ func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.Day2Policies(r.Context(), principal(r))
 	var roles, policyRoles []api.RoleRef
 	if err == nil {
-		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
-	}
-	if err == nil {
-		policyRoles, err = s.Core.Day2PolicyRoles(r.Context(), principal(r))
+		roles, policyRoles, err = s.Core.Day2PolicyRoles(r.Context(), principal(r))
 	}
 	var levels []api.ApprovalLevel
 	for _, p := range items {

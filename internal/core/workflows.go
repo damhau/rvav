@@ -188,7 +188,8 @@ func (s *Service) DeleteWorkflowRegistration(ctx context.Context, p *auth.Princi
 	if !p.Everywhere(auth.ExtensibilityManage) {
 		return ErrForbidden
 	}
-	if _, err := s.Store.GetWorkflowRegistration(ctx, key); errors.Is(err, store.ErrNotFound) {
+	reg, err := s.Store.GetWorkflowRegistration(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -213,7 +214,7 @@ func (s *Service) DeleteWorkflowRegistration(ctx context.Context, p *auth.Princi
 	if err := s.Store.DeleteWorkflowRegistration(ctx, key); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "workflow.delete", "workflow", key, nil, nil)
+	s.auditGone(ctx, p, "workflow.delete", "workflow", key, reg.Title, nil, nil)
 	return nil
 }
 

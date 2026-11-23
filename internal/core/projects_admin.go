@@ -722,6 +722,7 @@ func (s *Service) DeleteEnvironment(ctx context.Context, p *auth.Principal, key 
 	if !p.Everywhere(auth.EnvironmentsManage) {
 		return ErrForbidden
 	}
+	name := s.Store.TargetName(ctx, "environment", key)
 	switch err := s.Store.DeleteEnvironment(ctx, key); {
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
@@ -730,7 +731,7 @@ func (s *Service) DeleteEnvironment(ctx context.Context, p *auth.Principal, key 
 	case err != nil:
 		return err
 	}
-	s.audit(ctx, p, "environment.delete", "environment", key, nil, nil)
+	s.auditGone(ctx, p, "environment.delete", "environment", key, name, nil, nil)
 	return nil
 }
 
