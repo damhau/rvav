@@ -976,7 +976,7 @@ export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
         <Tabs
           value={shown}
           onValueChange={(next) =>
-            void navigate({ to: "/admin/projects", search: { tab: next as ProjectsTab }, replace: true })
+            void navigate({ to: "/admin/projects", search: (s) => ({ ...s, tab: next as ProjectsTab }), replace: true })
           }
         >
           <TabsList aria-label={t("projects.tabsLabel")}>

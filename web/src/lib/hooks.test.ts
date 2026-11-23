@@ -8,12 +8,17 @@ describe("useSearchBox", () => {
 
   function box(initial?: string) {
     const searches: (string | undefined)[] = [];
+    const initialProps: { search?: string; cleared?: number } = { search: initial };
     const view = renderHook(
-      ({ search }: { search?: string }) =>
-        useSearchBox(search, (next) => {
-          searches.push(next);
-        }),
-      { initialProps: { search: initial } },
+      ({ search, cleared }: { search?: string; cleared?: number }) =>
+        useSearchBox(
+          search,
+          (next) => {
+            searches.push(next);
+          },
+          { cleared },
+        ),
+      { initialProps },
     );
     return {
       view,
@@ -59,5 +64,16 @@ describe("useSearchBox", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(searches).toEqual(["web-prd"]);
+  });
+
+  it("drops what is typed and not yet searched when the filters are cleared", () => {
+    const { view, searches, text, type } = box();
+    type("ab");
+    view.rerender({ search: undefined, cleared: 1 });
+    expect(text()).toBe("");
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(searches).toEqual([]);
   });
 });

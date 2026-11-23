@@ -47,8 +47,7 @@
     "cluster": "Cluster",
     "allClusters": "Tous les clusters",
     "network": "Réseau",
-    "allNetworks": "Tous les réseaux",
-    "clear": "Effacer les filtres"
+    "allNetworks": "Tous les réseaux"
   },
   "page": {
     "title": "Ressources",

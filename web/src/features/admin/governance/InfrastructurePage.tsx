@@ -1246,7 +1246,12 @@ export function InfrastructurePage({ tab = "templates" }: { tab?: Infrastructure
       <Tabs
         value={tab}
         onValueChange={(next) =>
-          void navigate({ to: "/admin/infrastructure", search: { tab: next as InfrastructureTab }, replace: true })
+          void navigate({
+            from: "/admin/infrastructure",
+            to: "/admin/infrastructure",
+            search: (s) => ({ ...s, tab: next as InfrastructureTab }),
+            replace: true,
+          })
         }
       >
         <TabsList aria-label={t("infra.tabsLabel")}>

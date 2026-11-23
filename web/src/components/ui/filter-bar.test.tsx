@@ -11,7 +11,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { optBool, optString } from "@/routes/-search";
 import { PHONE } from "./data-table";
-import { FilterBar, FilterCheck, FilterEmpty, FilterInput, FilterSelect, useAddressFilters } from "./filter-bar";
+import {
+  FilterBar,
+  FilterCheck,
+  FilterEmpty,
+  FilterInput,
+  FilterSelect,
+  useAddressFilters,
+  type Filters,
+} from "./filter-bar";
 
 interface ListSearch {
   q?: string;
@@ -129,6 +137,42 @@ describe("FilterBar", () => {
     expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent("All statuses");
     expect(screen.getByLabelText("From")).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+  });
+
+  it("drops what is typed and not yet in the address when the filters are cleared", async () => {
+    const user = userEvent.setup();
+    const router = renderList("/list?status=failed");
+    const box = await screen.findByRole("searchbox", { name: "Search requests" });
+    await user.type(box, "ab");
+    await user.type(screen.getByRole("textbox", { name: "Folder" }), "Prod");
+    await user.click(barClear());
+    await act(() => new Promise((r) => setTimeout(r, 400)));
+    expect(search(router)).toEqual({});
+    expect(box).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+  });
+
+  it("refuses a filter named for a key the filters don't own", () => {
+    const filters: Filters<ListSearch> = {
+      values: {},
+      set: () => undefined,
+      filtered: false,
+      count: 0,
+      clear: () => undefined,
+      cleared: 0,
+      keys: ["status"],
+      bar: { current: null },
+    };
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(() =>
+      render(
+        <FilterBar filters={filters}>
+          <FilterCheck name="mine" label="Only mine" />
+        </FilterBar>,
+      ),
+    ).toThrow("The filter mine is none of the filters' keys: status");
+    quiet.mockRestore();
   });
 
   it("clears from the list's empty state too", async () => {

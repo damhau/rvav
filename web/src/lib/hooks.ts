@@ -13,16 +13,18 @@ export function useDebounced<T>(value: T, ms: number): T {
 /**
  * A search box over a search kept elsewhere, in the address or a list's filters. The box shows each key at
  * once; the search follows, trimmed, once typing pauses for `ms`. When the search changes without the box
- * (Back, a link, Clear the filters), the box shows it.
+ * (Back, a link, Clear the filters), the box shows it. A new `cleared` (Clear the filters, counted) drops
+ * what was typed and not yet searched.
  */
 export function useSearchBox(
   search: string | undefined,
   onSearch: (next: string | undefined) => void,
-  ms = 250,
+  { ms = 250, cleared }: { ms?: number; cleared?: number } = {},
 ): [string, (text: string) => void] {
   const [text, setText] = useState(search ?? "");
   const [sent, setSent] = useState(search);
   const [seen, setSeen] = useState(search);
+  const [seenCleared, setSeenCleared] = useState(cleared);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   if (search !== seen) {
     setSeen(search);
@@ -31,7 +33,13 @@ export function useSearchBox(
       setText(search ?? "");
     }
   }
-  useEffect(() => () => clearTimeout(timer.current), []);
+  if (cleared !== seenCleared) {
+    setSeenCleared(cleared);
+    setSent(search);
+    setText(search ?? "");
+  }
+  // A new `cleared` drops the search waiting to be sent, with the effect.
+  useEffect(() => () => clearTimeout(timer.current), [cleared]);
   const type = (next: string) => {
     setText(next);
     clearTimeout(timer.current);

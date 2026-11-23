@@ -429,7 +429,11 @@ export function OnboardingPage({ tab = "vms" }: { tab?: OnboardingTab }) {
       <Tabs
         value={tab}
         onValueChange={(next) =>
-          void navigate({ to: "/admin/onboarding", search: { tab: next as OnboardingTab }, replace: true })
+          void navigate({
+            to: "/admin/onboarding",
+            search: (s) => ({ ...s, tab: next as OnboardingTab }),
+            replace: true,
+          })
         }
       >
         <TabsList aria-label={t("onboarding.sections")}>

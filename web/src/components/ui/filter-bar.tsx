@@ -23,6 +23,10 @@ export interface Filters<S extends object = Values> {
   count: number;
   /** Removes every filter, leaves the rest of the address, and focuses the bar's first control. */
   clear: () => void;
+  /** How many times the filters were cleared: a box drops what was typed and not yet in the address. */
+  cleared: number;
+  /** The address keys the filters own; each control's `name` is one. */
+  keys: readonly string[];
   bar: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -36,13 +40,17 @@ const isSet = (v: unknown) => v !== undefined && v !== null && v !== "" && v !==
 export function useAddressFilters<S extends object>(values: S, keys: readonly (keyof S & string)[]): Filters<S> {
   const navigate = useNavigate();
   const bar = useRef<HTMLDivElement>(null);
+  const [cleared, setCleared] = useState(0);
   const go = (next: (s: Values) => Values) => void navigate({ to: ".", search: next as never, replace: true });
   return {
     values,
     filtered: keys.some((k) => isSet(values[k])),
     count: keys.filter((k) => k !== "q" && isSet(values[k])).length,
     set: (patch) => go((s) => ({ ...s, ...patch })),
+    cleared,
+    keys,
     clear: () => {
+      setCleared((n) => n + 1);
       go((s) => Object.fromEntries(Object.entries(s).filter(([k]) => !(keys as readonly string[]).includes(k))));
       // Clear goes once nothing is filtered, so the focus moves to what stays.
       bar.current?.querySelector<HTMLElement>("input, button:not([disabled]):not([aria-disabled=true])")?.focus();
@@ -53,9 +61,12 @@ export function useAddressFilters<S extends object>(values: S, keys: readonly (k
 
 const Ctx = createContext<Filters | null>(null);
 
-function useFilters(): Filters {
+// A name the filters don't own would never be cleared nor count as filtering: refused at once, so a
+// page's test finds it.
+function useFilter(name: string): Filters {
   const f = useContext(Ctx);
   if (!f) throw new Error("A filter belongs in a FilterBar");
+  if (!f.keys.includes(name)) throw new Error(`The filter ${name} is none of the filters' keys: ${f.keys.join(", ")}`);
   return f;
 }
 
@@ -130,8 +141,10 @@ export function FilterBar<S extends object>({
 }
 
 function SearchBox({ label, placeholder, className }: { label: string; placeholder?: string; className?: string }) {
-  const f = useFilters();
-  const [text, setText] = useSearchBox(typeof f.values.q === "string" ? f.values.q : undefined, (q) => f.set({ q }));
+  const f = useFilter("q");
+  const [text, setText] = useSearchBox(typeof f.values.q === "string" ? f.values.q : undefined, (q) => f.set({ q }), {
+    cleared: f.cleared,
+  });
   return <TableSearch label={label} placeholder={placeholder} value={text} onChange={setText} className={className} />;
 }
 
@@ -159,7 +172,7 @@ export function FilterSelect({
   /** Sets other keys with it, such as clearing a cluster when the vCenter changes. */
   onChange?: (value: string | undefined) => Values;
 }) {
-  const f = useFilters();
+  const f = useFilter(name);
   const held = f.values[name];
   const value = typeof held === "string" && held !== "" ? held : "any";
   const offered =
@@ -182,7 +195,7 @@ export function FilterSelect({
 
 /** A filter that is on or off: on keeps `value` (true by default) under its key. */
 export function FilterCheck({ name, label, value = true }: { name: string; label: string; value?: string | true }) {
-  const f = useFilters();
+  const f = useFilter(name);
   const id = useId();
   return (
     <span className="flex items-center gap-2 text-body">
@@ -211,11 +224,11 @@ export function FilterInput({
   /** The box's classes, such as a width or `font-mono`. */
   className?: string;
 }) {
-  const f = useFilters();
+  const f = useFilter(name);
   const id = useId();
   const value = f.values[name];
   const held = typeof value === "string" ? value : undefined;
-  const [text, setText] = useSearchBox(held, (v) => f.set({ [name]: v }));
+  const [text, setText] = useSearchBox(held, (v) => f.set({ [name]: v }), { cleared: f.cleared });
   return (
     <span className="flex items-center gap-2">
       <label htmlFor={id} className="text-secondary text-muted">

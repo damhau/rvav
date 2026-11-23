@@ -57,6 +57,18 @@ describe("Catalog items", () => {
     expect(router.state.location.search).toEqual({});
   });
 
+  it("keeps the items' search while another tab is open", async () => {
+    const u = user();
+    const { router } = renderApp("/admin/catalog-items?q=rhel");
+    await screen.findByRole("region", { name: "Items" });
+    await u.click(screen.getByRole("tab", { name: "Categories" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: "categories", q: "rhel" }));
+    await u.click(screen.getByRole("tab", { name: "Items" }));
+    const items = await screen.findByRole("region", { name: "Items" });
+    expect(within(items).getByRole("searchbox", { name: "Search items" })).toHaveValue("rhel");
+    expect(router.state.location.search).toEqual({ tab: "items", q: "rhel" });
+  });
+
   it("creates an item in a side panel", async () => {
     const u = user();
     const { router } = renderApp("/admin/catalog-items");

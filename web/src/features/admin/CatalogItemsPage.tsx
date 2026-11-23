@@ -148,7 +148,12 @@ export function CatalogItemsPage({ tab }: { tab?: CatalogTab }) {
       <Tabs
         value={tab ?? "items"}
         onValueChange={(v) =>
-          void navigate({ to: "/admin/catalog-items", search: { tab: v as CatalogTab }, replace: true })
+          void navigate({
+            from: "/admin/catalog-items/",
+            to: "/admin/catalog-items",
+            search: (s) => ({ ...s, tab: v as CatalogTab }),
+            replace: true,
+          })
         }
       >
         <TabsList aria-label={t("catalogItems.sections")}>
