@@ -67,7 +67,6 @@
     "onlyMine": "Only mine",
     "expiring": "Lease ends within 7 days",
     "sortBy": "Sort by",
-    "clear": "Clear filters",
     "noMatch": "No deployments match",
     "noMatchBody": "Try other words, or other filters.",
     "noneAll": "Nothing deployed in your projects yet",

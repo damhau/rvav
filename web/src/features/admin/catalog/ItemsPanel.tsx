@@ -1,5 +1,5 @@
 import { keepPreviousData, type Query, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Package } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,9 +9,10 @@ import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -21,13 +22,20 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemType } from "@/lib/api/types";
 import { formatList } from "@/lib/format";
-import { useSearchBox } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
-import { keys, q, type AdminItemFilters } from "@/lib/query";
+import { keys, q } from "@/lib/query";
 import { draftCopy } from "./designer/draftStore";
 
-const types = ["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const;
+export const itemKinds = ["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const;
+
+/** The items list's filters, in the address beside the tab. */
+export interface ItemsSearch {
+  q?: string;
+  category?: string;
+  state?: "published" | "unpublished";
+  kind?: (typeof itemKinds)[number];
+}
 
 const tr = i18n.getFixedT(null, "admin-catalog");
 const yamlStart = "apiVersion: rvav.dev/v1";
@@ -133,7 +141,7 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
             id="new-item-type"
             value={form.type}
             onChange={set("type")}
-            options={types.map((ty) => ({ value: ty, label: itemTypeLabel(ty) }))}
+            options={itemKinds.map((ty) => ({ value: ty, label: itemTypeLabel(ty) }))}
           />
         </Field>
       </div>
@@ -272,19 +280,20 @@ export function ItemsPanel() {
   const { t } = useTranslation("admin-catalog");
   const navigate = useNavigate();
   const { projectId } = useCurrentProject();
-  const [filters, setFilters] = useState<AdminItemFilters>({});
-  const [kind, setKind] = useState<CatalogItemType | "any">("any");
+  const search: ItemsSearch = useSearch({ from: "/admin/catalog-items/" });
+  const filters = useAddressFilters(search, ["q", "category", "state", "kind"]);
   const [sheet, setSheet] = useState<"new" | "import" | null>(null);
   const [asking, setAsking] = useState<Change | null>(null);
-  const [text, setText] = useSearchBox(filters.q, (next) => setFilters((f) => ({ ...f, q: next })));
-  const items = useQuery({ ...q.adminCatalogItems(filters), placeholderData: keepPreviousData });
+  const items = useQuery({
+    ...q.adminCatalogItems({ q: search.q, category: search.category, state: search.state }),
+    placeholderData: keepPreviousData,
+  });
   const categories = useQuery(q.adminCatalogCategories());
   const change = useItemChange();
   const categoryName = (key: string) => categories.data?.items.find((c) => c.key === key)?.name ?? key;
-  const rows = items.data?.items.filter((it) => kind === "any" || it.type === kind);
-  const filtered = Boolean(filters.q || filters.category || filters.state || kind !== "any");
+  const rows = items.data?.items.filter((it) => !search.kind || it.type === search.kind);
   // An empty catalog offers New item in its empty state only: one primary action at a time.
-  const listed = filtered || Boolean(rows?.length);
+  const listed = filters.filtered || Boolean(rows?.length);
   const requestable = (it: AdminCatalogItem) => requestableIn(it, projectId);
 
   const columns: Column<AdminCatalogItem>[] = [
@@ -363,66 +372,36 @@ export function ItemsPanel() {
         loading={items.isPending}
         error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
         toolbar={
-          <>
-            <TableSearch
-              label={t("items.search")}
-              placeholder={t("items.searchPlaceholder")}
-              value={text}
-              onChange={setText}
-            />
-            <Select
-              aria-label={t("items.kind")}
-              value={kind}
-              onChange={(v) => setKind(v as CatalogItemType | "any")}
-              options={[
-                { value: "any", label: t("items.allKinds") },
-                ...types.map((ty) => ({ value: ty, label: itemTypeLabel(ty) })),
-              ]}
+          <FilterBar filters={filters} search={{ label: t("items.search"), placeholder: t("items.searchPlaceholder") }}>
+            <FilterSelect
+              name="kind"
+              label={t("items.kind")}
+              any={t("items.allKinds")}
+              options={itemKinds.map((ty) => ({ value: ty, label: itemTypeLabel(ty) }))}
               className="w-44"
             />
-            <Select
-              aria-label={t("items.category")}
-              value={filters.category ?? "any"}
-              onChange={(v) => setFilters((f) => ({ ...f, category: v === "any" ? undefined : v }))}
-              options={[
-                { value: "any", label: t("items.allCategories") },
-                ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name })),
-              ]}
+            <FilterSelect
+              name="category"
+              label={t("items.category")}
+              any={t("items.allCategories")}
+              options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
               className="w-44"
             />
-            <Select
-              aria-label={t("items.state")}
-              value={filters.state ?? "any"}
-              onChange={(v) =>
-                setFilters((f) => ({ ...f, state: v === "any" ? undefined : (v as AdminItemFilters["state"]) }))
-              }
+            <FilterSelect
+              name="state"
+              label={t("items.state")}
+              any={t("items.anyState")}
               options={[
-                { value: "any", label: t("items.anyState") },
                 { value: "published", label: t("items.statePublished") },
                 { value: "unpublished", label: t("items.stateUnpublished") },
               ]}
               className="w-40"
             />
-          </>
+          </FilterBar>
         }
         empty={
-          filtered ? (
-            <EmptyState
-              icon={Package}
-              title={t("items.noMatch")}
-              body={t("items.noMatchBody")}
-              action={
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setFilters({});
-                    setKind("any");
-                  }}
-                >
-                  {t("items.clearFilters")}
-                </Button>
-              }
-            />
+          filters.filtered ? (
+            <FilterEmpty filters={filters} icon={Package} title={t("items.noMatch")} body={t("items.noMatchBody")} />
           ) : (
             <EmptyState icon={Package} title={t("items.empty")} body={t("items.emptyBody")} action={add} />
           )

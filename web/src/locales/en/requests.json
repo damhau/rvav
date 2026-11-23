@@ -182,7 +182,6 @@
     "status": "Status",
     "allStatuses": "All statuses",
     "onlyMine": "Only mine",
-    "clear": "Clear filters",
     "noMatch": "No requests match",
     "noMatchBody": "Try other words, or another status.",
     "none": "Nothing requested in {{project}} yet",

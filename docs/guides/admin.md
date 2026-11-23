@@ -2623,8 +2623,9 @@ the **Settings, secrets, integrations** events.
   ([reports.md](../reports.md)).
 - **Audit log:** every administrative change and approver edit, and every
   sign-in, with who made it. Search and filter it by what changed,
-  project and dates; select an event's time to see its detail in a side
-  panel. **Export CSV** keeps it for the archive.
+  project and dates; the address keeps the filters, so you can bookmark a
+  search. Select an event's time to see its detail in a side panel.
+  **Export CSV** keeps it for the archive.
 - **Secrets:** stored secrets (domain-join accounts, webhook signing
   secrets, credentials for value sources) are sealed with the secrets key.
   They are written, never read back.

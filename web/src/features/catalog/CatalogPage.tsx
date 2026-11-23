@@ -1,18 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { LayoutGrid, SearchX } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { LayoutGrid } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
-import { TableSearch } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
-import { Select } from "@/components/ui/select";
 import type { CatalogItem, CatalogItemType } from "@/lib/api/types";
 import { can } from "@/lib/can";
-import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { roughDuration } from "@/lib/format";
@@ -82,21 +80,9 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
   const { t } = useTranslation("catalog");
   const { projectId, project, me } = useCurrentProject();
   const mayRequest = can(me, "request.submit", projectId);
-  const navigate = useNavigate({ from: "/catalog/" });
-  // The address keeps the search, without a history entry per keystroke.
-  const [text, setText] = useSearchBox(
-    search.q,
-    (next) => void navigate({ search: (s: CatalogSearch) => ({ ...s, q: next }), replace: true }),
-  );
+  const filters = useAddressFilters(search, ["q", "category", "type"]);
   const categories = useQuery(q.categories(projectId));
   const items = useQuery(q.catalog({ projectId, category: search.category, q: search.q, type: search.type }));
-  const filtered = Boolean(search.q || search.category || search.type);
-
-  const set = (patch: Partial<CatalogSearch>) =>
-    void navigate({ search: (s: CatalogSearch) => ({ ...s, ...patch }), replace: true });
-  const clear = () => {
-    void navigate({ search: {}, replace: true });
-  };
   const count = items.data?.items.length;
 
   return (
@@ -105,44 +91,31 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
         title={t("page.title")}
         description={t(mayRequest ? "page.leadMayRequest" : "page.leadMayNotRequest", { project: project.name })}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <TableSearch
-          label={t("page.search")}
-          placeholder={t("page.searchPlaceholder")}
-          value={text}
-          onChange={setText}
-          className="w-72"
-        />
-        <Select
-          aria-label={t("page.category")}
-          value={search.category ?? "any"}
-          onChange={(v) => set({ category: v === "any" ? undefined : v })}
+      <FilterBar
+        filters={filters}
+        search={{ label: t("page.search"), placeholder: t("page.searchPlaceholder"), className: "w-72" }}
+        end={count === undefined ? "" : t("page.count", { count })}
+      >
+        <FilterSelect
+          name="category"
+          label={t("page.category")}
+          any={t("page.allCategories")}
           loading={categories.isPending}
-          options={[
-            { value: "any", label: t("page.allCategories") },
-            ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name, meta: String(c.item_count) })),
-          ]}
+          options={(categories.data?.items ?? []).map((c) => ({
+            value: c.key,
+            label: c.name,
+            meta: String(c.item_count),
+          }))}
           className="w-48"
         />
-        <Select
-          aria-label={t("page.kind")}
-          value={search.type ?? "any"}
-          onChange={(v) => set({ type: v === "any" ? undefined : (v as CatalogItemType) })}
-          options={[
-            { value: "any", label: t("page.allKinds") },
-            ...catalogKinds.map((k) => ({ value: k, label: itemTypeLabel(k) })),
-          ]}
+        <FilterSelect
+          name="type"
+          label={t("page.kind")}
+          any={t("page.allKinds")}
+          options={catalogKinds.map((k) => ({ value: k, label: itemTypeLabel(k) }))}
           className="w-48"
         />
-        {filtered && (
-          <Button variant="quiet" onClick={clear}>
-            {t("page.clear")}
-          </Button>
-        )}
-        <span className="ml-auto text-secondary text-muted" aria-live="polite">
-          {count === undefined ? "" : t("page.count", { count })}
-        </span>
-      </div>
+      </FilterBar>
       {items.isPending ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -157,13 +130,8 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
         />
       ) : items.data.items.length === 0 ? (
         <div className="rounded-lg border border-line bg-surface">
-          {filtered ? (
-            <EmptyState
-              icon={SearchX}
-              title={t("page.noMatch")}
-              body={t("page.noMatchBody")}
-              action={<Button onClick={clear}>{t("page.clear")}</Button>}
-            />
+          {filters.filtered ? (
+            <FilterEmpty filters={filters} title={t("page.noMatch")} body={t("page.noMatchBody")} />
           ) : (
             <EmptyState
               icon={LayoutGrid}

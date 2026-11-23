@@ -13,7 +13,7 @@ async function choose(user: UserEvent, combobox: string, option: string) {
 
 /** Searches, then waits for the list the search gives: its rows are replaced once the search applies. */
 async function search(user: UserEvent, text: string, found: string | RegExp) {
-  const box = await screen.findByRole("textbox", { name: "Search" });
+  const box = await screen.findByRole("searchbox", { name: "Search" });
   await user.clear(box);
   await user.click(box);
   await user.paste(text);
@@ -173,8 +173,8 @@ describe("Onboarding", () => {
     const user = userEvent.setup();
     renderApp("/admin/onboarding");
     await search(user, "no-such-vm", "No VM rvav doesn't manage matches these filters.");
-    await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getByRole("textbox", { name: "Search" })).toHaveValue("");
+    await user.click(screen.getAllByRole("button", { name: "Clear filters" }).at(-1)!);
+    expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("");
     expect(await screen.findByText("60 VMs")).toBeInTheDocument();
   });
 });

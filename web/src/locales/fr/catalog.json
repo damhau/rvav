@@ -28,7 +28,6 @@
     "allCategories": "Toutes les catégories",
     "kind": "Type",
     "allKinds": "Tous les types",
-    "clear": "Effacer les filtres",
     "count_one": "{{count}} élément",
     "count_many": "{{count}} éléments",
     "count_other": "{{count}} éléments",

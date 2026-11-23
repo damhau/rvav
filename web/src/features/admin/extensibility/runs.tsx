@@ -1,7 +1,7 @@
 // A subscription's runs: each event delivered to it, with what was sent,
 // every attempt and what came back; failed runs can be tried again.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { History } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,12 +10,12 @@ import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { KeyValues } from "@/components/common/page";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { Panel } from "@/components/ui/panel";
 import { Mono, Time } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { i18n } from "@/lib/i18n";
@@ -36,7 +36,12 @@ const statusTone: Record<S["SubscriptionRunStatus"], "ok" | "bad" | "warn" | "ru
   blocked: "warn",
 };
 
-const statusKeys: RunStatusKey[] = ["queued", "delivering", "delivered", "failed", "blocked"];
+export const statusKeys = ["queued", "delivering", "delivered", "failed", "blocked"] as const satisfies RunStatusKey[];
+
+/** The runs list's filter, in the subscription's address. */
+export interface RunsSearch {
+  status?: (typeof statusKeys)[number];
+}
 
 export function RunStatus({ status }: { status: RunStatusKey }) {
   const { t } = useTranslation("admin-extensibility");
@@ -204,9 +209,10 @@ export function RunDialog({
 
 export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string; canRetry: boolean }) {
   const { t } = useTranslation(["admin-extensibility", "common"]);
-  const [status, setStatus] = useState("any");
+  const search: RunsSearch = useSearch({ from: "/admin/subscriptions/$subscriptionId" });
+  const filters = useAddressFilters(search, ["status"]);
   const [open, setOpen] = useState<string | null>(null);
-  const runs = useInfiniteQuery(adm.subscriptionRuns(subscriptionId, status));
+  const runs = useInfiniteQuery(adm.subscriptionRuns(subscriptionId, search.status ?? "any"));
   const columns: Column<S["SubscriptionRun"]>[] = [
     {
       id: "when",
@@ -266,11 +272,8 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
       cell: (r) => r.attempts,
     },
   ];
-  const statuses = [
-    { value: "any", label: t("run.anyStatus") },
-    ...statusKeys.map((value) => ({ value, label: t(`run.status.${value}`) })),
-  ];
-  const statusLabelOf = statuses.find((s) => s.value === status)?.label ?? "";
+  const statuses = statusKeys.map((value) => ({ value, label: t(`run.status.${value}`) }));
+  const statusLabelOf = statuses.find((s) => s.value === search.status)?.label ?? "";
   return (
     <Panel
       title={t("runs.title")}
@@ -293,29 +296,26 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
         loading={runs.isPending}
         error={runs.isError && <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />}
         toolbar={
-          <Select
-            id="runs-status"
-            aria-label={t("shared.status")}
-            value={status}
-            onChange={setStatus}
-            options={statuses}
-            className="w-48"
-          />
+          <FilterBar filters={filters}>
+            <FilterSelect
+              name="status"
+              label={t("shared.status")}
+              any={t("run.anyStatus")}
+              options={statuses}
+              className="w-48"
+            />
+          </FilterBar>
         }
         empty={
-          status === "any" ? (
-            <EmptyState icon={History} title={t("runs.none")} body={t("runs.noneBody")} />
-          ) : (
-            <EmptyState
+          filters.filtered ? (
+            <FilterEmpty
+              filters={filters}
               icon={History}
               title={t("runs.noneWith", { status: statusLabelOf })}
               body={t("runs.noneWithBody")}
-              action={
-                <Button size="sm" onClick={() => setStatus("any")}>
-                  {t("runs.showAll")}
-                </Button>
-              }
             />
+          ) : (
+            <EmptyState icon={History} title={t("runs.none")} body={t("runs.noneBody")} />
           )
         }
       />

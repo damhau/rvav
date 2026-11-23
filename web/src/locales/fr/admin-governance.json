@@ -740,7 +740,6 @@
       "archivedToo": "Archivés compris",
       "noMatch": "Aucun projet ne correspond",
       "noMatchBody": "Recherchez par nom ou par code.",
-      "clear": "Effacer la recherche",
       "emptyTitle": "Aucun projet pour l'instant",
       "emptyBody": "Un projet, c'est qui demande\u00a0: ses membres, les environnements où il déploie, où vont ses VM et ses quotas.",
       "open": "Ouvrir"

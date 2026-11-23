@@ -15,7 +15,7 @@ test("adopt twelve existing VMs, each into its own deployment", async ({ page })
   await expect(page.getByRole("heading", { name: "Onboarding" })).toBeVisible();
   await expect(page.getByText("60 VMs")).toBeVisible();
 
-  await page.getByRole("textbox", { name: "Search" }).fill("erp-app");
+  await page.getByRole("searchbox", { name: "Search" }).fill("erp-app");
   const table = page.getByRole("table", { name: "VMs to adopt" });
   await expect(page.getByText("12 VMs")).toBeVisible();
   await table.getByRole("checkbox", { name: "Select all shown" }).check();
@@ -48,7 +48,7 @@ test("adopt twelve existing VMs, each into its own deployment", async ({ page })
 
 test("several VMs into one deployment", async ({ page }) => {
   await page.goto("/admin/onboarding");
-  await page.getByRole("textbox", { name: "Search" }).fill("app-old");
+  await page.getByRole("searchbox", { name: "Search" }).fill("app-old");
   await expect(page.getByText("8 VMs")).toBeVisible();
   const table = page.getByRole("table", { name: "VMs to adopt" });
   await table.getByRole("checkbox", { name: "Select app-old01" }).check();

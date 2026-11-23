@@ -19,13 +19,24 @@ describe("Audit log", () => {
     await waitFor(() => expect(within(table).queryByText("catalog.version.publish")).toBeNull());
     expect(within(table).getByText("token.create")).toBeInTheDocument();
 
-    await user.type(screen.getByRole("textbox", { name: "Search" }), "nobody-did-this");
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "nobody-did-this");
     expect(await screen.findByText("No event matches these filters.")).toBeInTheDocument();
     const clear = screen.getAllByRole("button", { name: "Clear filters" });
     await user.click(clear[clear.length - 1]!);
     expect(await screen.findByText("catalog.version.publish")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Search" })).toHaveValue("");
+    expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("");
+    expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+  });
+
+  it("opens filtered from its address, and drops a day it can't read", async () => {
+    const { router } = renderApp("/admin/audit?kind=token.&from=yesterday&to=2026-13-45");
+    const table = await screen.findByRole("table", { name: "Audit events" });
+    expect(await within(table).findByText("token.create")).toBeInTheDocument();
+    expect(within(table).queryByText("catalog.version.publish")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "What" })).toHaveTextContent("API tokens");
+    expect(screen.getByLabelText("From")).toHaveValue("");
+    expect(router.state.location.search).toEqual({ kind: "token." });
   });
 
   it("shows failed sign-ins only, from where, by nobody known", async () => {

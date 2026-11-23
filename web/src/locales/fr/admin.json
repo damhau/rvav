@@ -626,7 +626,8 @@
     "searchPlaceholder": "Nom, adresse ou nom d'hôte",
     "folder": "Dossier",
     "power": "Alimentation",
-    "any": "Toutes",
+    "allVcenters": "Tous les vCenter",
+    "allPowerStates": "Tous les états",
     "on": "Allumée",
     "off": "Éteinte",
     "suspended": "Suspendue",
@@ -639,8 +640,7 @@
     "atMostSuffix": " · au plus {{n}} à la fois",
     "nothing": "Rien à intégrer",
     "noMatch": "Aucune VM que rvav ne gère pas ne correspond à ces filtres.",
-    "allManaged": "Toutes les VM de l'inventaire sont gérées par rvav.",
-    "clear": "Effacer les filtres"
+    "allManaged": "Toutes les VM de l'inventaire sont gérées par rvav."
   },
   "catalogItems": {
     "description": "Construisez des éléments, publiez leurs versions et choisissez les projets qui peuvent les demander.",
@@ -1024,7 +1024,7 @@
       "workflow": "workflow"
     },
     "kind": {
-      "any": "Tout",
+      "any": "Tous les événements",
       "catalog": "Catalogue",
       "project": "Projets",
       "member": "Membres",
@@ -1065,10 +1065,9 @@
     "events": "Événements d'audit",
     "search": "Rechercher",
     "searchPlaceholder": "Qui, quoi, cible",
-    "any": "Tous",
+    "allProjects": "Tous les projets",
     "fromDay": "Du",
     "toDay": "Au",
-    "clear": "Effacer les filtres",
     "nothingFound": "Rien trouvé",
     "noMatch": "Aucun événement ne correspond à ces filtres.",
     "nothingYet": "Rien d'enregistré pour l'instant",

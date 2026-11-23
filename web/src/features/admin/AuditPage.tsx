@@ -2,6 +2,7 @@
 // searched and exported as CSV. Administrators and auditors see all of it,
 // project admins their projects' events.
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { Download, ScrollText } from "lucide-react";
 import { useState } from "react";
@@ -12,15 +13,13 @@ import { KeyValues, Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input } from "@/components/ui/input";
+import { FilterBar, FilterEmpty, FilterInput, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { projectsWith } from "@/lib/can";
-import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q, type AuditFilters } from "@/lib/query";
 import { fullDate } from "@/lib/format";
@@ -28,8 +27,16 @@ import { i18n } from "@/lib/i18n";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
 
+/** The audit log's filters, in the address. `from` and `to` are local days, `to` included. */
+export interface AuditSearch {
+  q?: string;
+  kind?: string;
+  project?: string;
+  from?: string;
+  to?: string;
+}
+
 const kinds = [
-  { value: "any", key: "any" },
   { value: "catalog.", key: "catalog" },
   { value: "project.", key: "project" },
   { value: "member.", key: "member" },
@@ -207,8 +214,6 @@ const columns = (t: TFunction<"admin">, open: (e: AuditEvent) => void): Column<A
   },
 ];
 
-const none = { search: "", kind: "any", project: "any", from: "", to: "" };
-
 export function AuditPage() {
   const { t } = useTranslation(["admin", "shell", "common"]);
   const { me } = useCurrentProject();
@@ -223,16 +228,16 @@ export function AuditPage() {
           label: p.archived ? t("audit.archived", { name: p.name }) : p.name,
         }))
       : scope.map((p) => ({ value: p.id, label: p.name }));
-  const [f, setF] = useState(none);
+  const search: AuditSearch = useSearch({ from: "/admin/audit" });
+  const bar = useAddressFilters(search, ["q", "kind", "project", "from", "to"]);
   const [opened, setOpened] = useState<AuditEvent | null>(null);
   const filters: AuditFilters = {
-    q: useDebounced(f.search, 300) || undefined,
-    action: f.kind === "any" ? undefined : f.kind,
-    project_id: f.project === "any" ? undefined : f.project,
-    from: f.from ? dayStart(f.from) : undefined,
-    to: f.to ? dayStart(f.to, true) : undefined,
+    q: search.q,
+    action: search.kind,
+    project_id: search.project,
+    from: search.from ? dayStart(search.from) : undefined,
+    to: search.to ? dayStart(search.to, true) : undefined,
   };
-  const filtered = (Object.keys(none) as (keyof typeof none)[]).some((k) => f[k] !== none[k]);
   const events = useInfiniteQuery(q.audit(filters));
   const list = events.data?.pages.flatMap((p) => p.items);
   const exportCsv = useMutation({
@@ -275,61 +280,32 @@ export function AuditPage() {
           loading={events.isPending}
           error={events.isError && <ErrorState error={events.error} onRetry={() => void events.refetch()} />}
           toolbar={
-            <div className="flex w-full flex-wrap items-end gap-2">
-              <Field label={t("audit.search")} htmlFor="audit-search" className="w-56">
-                <Input
-                  id="audit-search"
-                  value={f.search}
-                  onChange={(e) => setF({ ...f, search: e.target.value })}
-                  placeholder={t("audit.searchPlaceholder")}
-                />
-              </Field>
-              <Field label={t("audit.what")} htmlFor="audit-kind" className="w-40">
-                <Select
-                  id="audit-kind"
-                  value={f.kind}
-                  onChange={(kind) => setF({ ...f, kind })}
-                  options={kinds.map((k) => ({ value: k.value, label: t(`audit.kind.${k.key}`) }))}
-                />
-              </Field>
-              <Field label={t("audit.project")} htmlFor="audit-project" className="w-44">
-                <Select
-                  id="audit-project"
-                  value={f.project}
-                  onChange={(project) => setF({ ...f, project })}
-                  options={[{ value: "any", label: t("audit.any") }, ...projectOptions]}
-                />
-              </Field>
-              <Field label={t("audit.fromDay")} htmlFor="audit-from">
-                <Input
-                  id="audit-from"
-                  type="date"
-                  value={f.from}
-                  onChange={(e) => setF({ ...f, from: e.target.value })}
-                />
-              </Field>
-              <Field label={t("audit.toDay")} htmlFor="audit-to">
-                <Input id="audit-to" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
-              </Field>
-              {filtered && (
-                <Button variant="quiet" onClick={() => setF(none)}>
-                  {t("audit.clear")}
-                </Button>
-              )}
-            </div>
+            <FilterBar
+              filters={bar}
+              search={{ label: t("audit.search"), placeholder: t("audit.searchPlaceholder"), className: "w-56" }}
+            >
+              <FilterSelect
+                name="kind"
+                label={t("audit.what")}
+                any={t("audit.kind.any")}
+                options={kinds.map((k) => ({ value: k.value, label: t(`audit.kind.${k.key}`) }))}
+                className="w-44"
+              />
+              <FilterSelect
+                name="project"
+                label={t("audit.project")}
+                any={t("audit.allProjects")}
+                loading={scope === "all" && allProjects.isPending}
+                options={projectOptions}
+                className="w-48"
+              />
+              <FilterInput name="from" type="date" label={t("audit.fromDay")} />
+              <FilterInput name="to" type="date" label={t("audit.toDay")} />
+            </FilterBar>
           }
           empty={
-            filtered ? (
-              <EmptyState
-                icon={ScrollText}
-                title={t("audit.nothingFound")}
-                body={t("audit.noMatch")}
-                action={
-                  <Button size="sm" onClick={() => setF(none)}>
-                    {t("audit.clear")}
-                  </Button>
-                }
-              />
+            bar.filtered ? (
+              <FilterEmpty filters={bar} icon={ScrollText} title={t("audit.nothingFound")} body={t("audit.noMatch")} />
             ) : (
               <EmptyState icon={ScrollText} title={t("audit.nothingYet")} body={t("audit.nothingYetBody")} />
             )

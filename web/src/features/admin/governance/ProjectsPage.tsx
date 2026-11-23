@@ -1,6 +1,6 @@
 // Projects, environments and identity provider groups (S9, ADR-0020).
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { FolderKanban, Layers, UsersRound } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useState } from "react";
@@ -12,9 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckField, Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterCheck, FilterEmpty, useAddressFilters } from "@/components/ui/filter-bar";
 import { Field, FieldNote, Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -26,7 +27,6 @@ import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
 import { can, projectsWith } from "@/lib/can";
-import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
@@ -46,6 +46,12 @@ const groupExample = "rvav-web";
 
 export const projectsTabs = ["projects", "environments", "groups"] as const;
 export type ProjectsTab = (typeof projectsTabs)[number];
+
+/** The projects list's filters, in the address beside the tab. */
+export interface ProjectsSearch {
+  q?: string;
+  archived?: boolean;
+}
 
 /** A project, a member, a mapping: what changes with it is everywhere, /me too. */
 function useRefreshAccess() {
@@ -258,15 +264,14 @@ function QuotaUse({ projectId }: { projectId: string }) {
 function ProjectsPanel() {
   const { t } = useTranslation("admin-governance");
   const navigate = useNavigate();
-  const [search, setSearch] = useState<string>();
-  const [text, setText] = useSearchBox(search, setSearch);
-  const [archived, setArchived] = useState(false);
+  const search: ProjectsSearch = useSearch({ from: "/admin/projects/" });
+  const filters = useAddressFilters(search, ["q", "archived"]);
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<S["AdminProject"] | null>(null);
   const { me } = useCurrentProject();
   const scope = projectsWith(me, "project.settings.read");
   const projects = useQuery({
-    ...adm.projects(search ?? "", archived),
+    ...adm.projects(search.q ?? "", Boolean(search.archived)),
     enabled: scope === "all",
     placeholderData: keepPreviousData,
   });
@@ -339,9 +344,8 @@ function ProjectsPanel() {
       {t("projects.list.add")}
     </Button>
   );
-  const filtered = Boolean(search) || archived;
   // With no project at all, the empty state offers New project itself.
-  const none = projects.data?.items.length === 0 && !filtered;
+  const none = projects.data?.items.length === 0 && !filters.filtered;
   return (
     <Panel title={t("projects.list.title")} flush actions={none ? undefined : create}>
       <DataTable
@@ -354,36 +358,20 @@ function ProjectsPanel() {
         loading={projects.isPending}
         error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
         toolbar={
-          <>
-            <TableSearch
-              label={t("projects.list.search")}
-              value={text}
-              onChange={setText}
-              placeholder={t("projects.list.searchPlaceholder")}
-            />
-            <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
-              <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
-              {t("projects.list.archivedToo")}
-            </label>
-          </>
+          <FilterBar
+            filters={filters}
+            search={{ label: t("projects.list.search"), placeholder: t("projects.list.searchPlaceholder") }}
+          >
+            <FilterCheck name="archived" label={t("projects.list.archivedToo")} />
+          </FilterBar>
         }
         empty={
-          filtered ? (
-            <EmptyState
+          filters.filtered ? (
+            <FilterEmpty
+              filters={filters}
               icon={FolderKanban}
               title={t("projects.list.noMatch")}
               body={t("projects.list.noMatchBody")}
-              action={
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setSearch(undefined);
-                    setArchived(false);
-                  }}
-                >
-                  {t("projects.list.clear")}
-                </Button>
-              }
             />
           ) : (
             <EmptyState

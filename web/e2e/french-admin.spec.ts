@@ -282,7 +282,7 @@ test("onboarding and AWX's templates, in French", async ({ page }) => {
   const vms = page.getByRole("table", { name: "VM à intégrer" });
   await expect(vms.getByRole("columnheader", { name: /^OS invité/ })).toBeVisible();
   await bothThemes(page, "onboarding");
-  await page.getByRole("textbox", { name: "Rechercher" }).fill("app-old");
+  await page.getByRole("searchbox", { name: "Rechercher" }).fill("app-old");
   await expect(page.getByText("8 VM", { exact: true })).toBeVisible();
   await vms.getByRole("checkbox", { name: "Sélectionner app-old01" }).check();
   await expect(page.getByRole("region", { name: "VM sélectionnées" })).toContainText("1 VM sélectionnée");

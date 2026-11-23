@@ -4,7 +4,7 @@
 // from EfficientIP. Nothing changes in vCenter or EfficientIP. Plans adopt
 // the VMs a filter matches, by hand or every few hours.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { ServerCog } from "lucide-react";
 import { useState } from "react";
@@ -17,16 +17,14 @@ import { Button } from "@/components/ui/button";
 import { CheckField } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input } from "@/components/ui/input";
+import { FilterBar, FilterInput, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatSize } from "@/lib/format";
-import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
 import { PlansTab, type Plan } from "./onboarding/plans";
@@ -37,6 +35,16 @@ type Vm = S["OnboardingVm"];
 
 export const onboardingTabs = ["vms", "plans"] as const;
 export type OnboardingTab = (typeof onboardingTabs)[number];
+
+export const powerStates = ["on", "off", "suspended"] as const;
+
+/** The VMs tab's filters, in the address beside the tab. */
+export interface OnboardingSearch {
+  q?: string;
+  folder?: string;
+  vcenter?: string;
+  power?: (typeof powerStates)[number];
+}
 
 const keyOf = (v: Vm) => `${v.vcenter}/${v.moref}`;
 /** How many VMs one adoption takes (the server's limit). */
@@ -247,23 +255,18 @@ const columnsOf = (t: TFunction<"admin">): Column<Vm>[] => [
 function VmsTab() {
   const { t } = useTranslation(["admin", "common"]);
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [vcenter, setVcenter] = useState("any");
-  const [power, setPower] = useState("any");
-  const [folder, setFolder] = useState("");
-  const debounced = useDebounced(search, 250);
-  const debouncedFolder = useDebounced(folder.trim(), 250);
+  const search: OnboardingSearch = useSearch({ from: "/admin/onboarding/" });
+  const bar = useAddressFilters(search, ["q", "folder", "vcenter", "power"]);
   const vcenters = useQuery(adm.vcenters());
   // Loaded with the page: the side panel then opens on its Project field,
   // which stays disabled while it loads.
   useQuery(adm.projectNames());
   const filters = {
-    q: debounced || undefined,
-    vcenter: vcenter === "any" ? undefined : vcenter,
-    power_state: power === "any" ? undefined : (power as S["VmPowerState"]),
-    folder: debouncedFolder || undefined,
+    q: search.q,
+    vcenter: search.vcenter,
+    power_state: search.power,
+    folder: search.folder?.trim() || undefined,
   };
-  const filtered = search !== "" || vcenter !== "any" || power !== "any" || folder !== "";
   const list = useInfiniteQuery({
     queryKey: ["admin", "onboarding", filters],
     initialPageParam: undefined as string | undefined,
@@ -281,12 +284,6 @@ function VmsTab() {
   // A selection outlives the filters: what it holds that isn't shown is said.
   const shown = new Map((vms ?? []).map((v) => [keyOf(v), v]));
   const hidden = [...selected.keys()].filter((k) => !shown.has(k)).length;
-  const clearFilters = () => {
-    setSearch("");
-    setVcenter("any");
-    setPower("any");
-    setFolder("");
-  };
   return (
     <div className="flex flex-col gap-4">
       {result && <Adopted result={result} onClose={() => setResult(null)} />}
@@ -336,65 +333,54 @@ function VmsTab() {
             allLabel: t("onboarding.selectAll"),
           }}
           toolbar={
-            <div className="flex w-full flex-wrap items-end gap-2">
-              <Field label={t("onboarding.search")} htmlFor="ob-search" className="w-56">
-                <Input
-                  id="ob-search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("onboarding.searchPlaceholder")}
-                />
-              </Field>
-              <Field label={t("onboarding.folder")} htmlFor="ob-folder" className="w-48">
-                <Input
-                  id="ob-folder"
-                  className="font-mono"
-                  value={folder}
-                  onChange={(e) => setFolder(e.target.value)}
-                  placeholder={folderExample}
-                />
-              </Field>
-              <Field label="vCenter" htmlFor="ob-vcenter" className="w-48">
-                <Select
-                  id="ob-vcenter"
-                  value={vcenter}
-                  onChange={setVcenter}
-                  options={[
-                    { value: "any", label: t("onboarding.any") },
-                    ...(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name })),
-                  ]}
-                />
-              </Field>
-              <Field label={t("onboarding.power")} htmlFor="ob-power" className="w-32">
-                <Select
-                  id="ob-power"
-                  value={power}
-                  onChange={setPower}
-                  options={[
-                    { value: "any", label: t("onboarding.any") },
-                    { value: "on", label: t("onboarding.on") },
-                    { value: "off", label: t("onboarding.off") },
-                    { value: "suspended", label: t("onboarding.suspended") },
-                  ]}
-                />
-              </Field>
-              <span className="ml-auto self-center text-secondary text-muted" aria-live="polite">
-                {list.data ? t("onboarding.vms", { count: total }) : ""}
-                {selected.size > 0 ? t("onboarding.selectedSuffix", { count: selected.size }) : ""}
-                {hidden > 0 ? t("onboarding.hiddenSuffix", { count: hidden }) : ""}
-                {selected.size > MAX_ADOPT ? t("onboarding.atMostSuffix", { n: MAX_ADOPT }) : ""}
-              </span>
-            </div>
+            <FilterBar
+              filters={bar}
+              search={{
+                label: t("onboarding.search"),
+                placeholder: t("onboarding.searchPlaceholder"),
+                className: "w-56",
+              }}
+              end={
+                <>
+                  {list.data ? t("onboarding.vms", { count: total }) : ""}
+                  {selected.size > 0 ? t("onboarding.selectedSuffix", { count: selected.size }) : ""}
+                  {hidden > 0 ? t("onboarding.hiddenSuffix", { count: hidden }) : ""}
+                  {selected.size > MAX_ADOPT ? t("onboarding.atMostSuffix", { n: MAX_ADOPT }) : ""}
+                </>
+              }
+            >
+              <FilterInput
+                name="folder"
+                label={t("onboarding.folder")}
+                placeholder={folderExample}
+                className="font-mono"
+              />
+              <FilterSelect
+                name="vcenter"
+                label="vCenter"
+                any={t("onboarding.allVcenters")}
+                loading={vcenters.isPending}
+                options={(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name }))}
+                className="w-48"
+              />
+              <FilterSelect
+                name="power"
+                label={t("onboarding.power")}
+                any={t("onboarding.allPowerStates")}
+                options={powerStates.map((p) => ({ value: p, label: t(`onboarding.${p}`) }))}
+                className="w-44"
+              />
+            </FilterBar>
           }
           empty={
             <EmptyState
               icon={ServerCog}
               title={t("onboarding.nothing")}
-              body={filtered ? t("onboarding.noMatch") : t("onboarding.allManaged")}
+              body={bar.filtered ? t("onboarding.noMatch") : t("onboarding.allManaged")}
               action={
-                filtered && (
-                  <Button size="sm" onClick={clearFilters}>
-                    {t("onboarding.clear")}
+                bar.filtered && (
+                  <Button size="sm" onClick={bar.clear}>
+                    {t("common:filters.clear")}
                   </Button>
                 )
               }

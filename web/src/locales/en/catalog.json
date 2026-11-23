@@ -28,7 +28,6 @@
     "allCategories": "All categories",
     "kind": "Kind",
     "allKinds": "All kinds",
-    "clear": "Clear filters",
     "count_one": "{{count}} item",
     "count_other": "{{count}} items",
     "noMatch": "No items match",

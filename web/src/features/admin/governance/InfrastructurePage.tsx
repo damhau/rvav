@@ -2,7 +2,7 @@
 // blueprints' template and size pickers offer, and the subnet each vCenter
 // network deploys into; rvav's IP ranges (ADR-0063); and the vCenter
 // objects' tags (ADR-0035).
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, Network, Server, X } from "lucide-react";
 import type { TFunction } from "i18next";
@@ -15,9 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -1032,7 +1033,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-type Kind = "cluster" | "host" | "resource_pool" | "datastore" | "datastore_cluster" | "network";
+export type Kind = "cluster" | "host" | "resource_pool" | "datastore" | "datastore_cluster" | "network";
 
 interface VsphereObject {
   kind: Kind;
@@ -1045,7 +1046,20 @@ interface VsphereObject {
   tags: string[];
 }
 
-const kindFilters = ["all", "cluster", "host", "resource_pool", "datastore", "datastore_cluster", "network"] as const;
+export const inventoryKinds = [
+  "cluster",
+  "host",
+  "resource_pool",
+  "datastore",
+  "datastore_cluster",
+  "network",
+] as const;
+
+/** The inventory's filters, in the address beside the tab. */
+export interface InventorySearch {
+  q?: string;
+  kind?: Kind;
+}
 
 type T = TFunction<"admin-governance">;
 
@@ -1121,13 +1135,13 @@ function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
 function Inventory() {
   const { t } = useTranslation("admin-governance");
   const inventory = useQuery(adm.inventory());
-  const [q, setQ] = useState("");
-  const [kind, setKind] = useState<Kind | "all">("all");
+  const search: InventorySearch = useSearch({ from: "/admin/infrastructure" });
+  const filters = useAddressFilters(search, ["q", "kind"]);
   const all = inventory.data ? objectsOf(inventory.data, t) : undefined;
-  const needle = q.trim().toLowerCase();
+  const needle = (search.q ?? "").toLowerCase();
   const rows = all?.filter(
     (o) =>
-      (kind === "all" || o.kind === kind) &&
+      (!search.kind || o.kind === search.kind) &&
       (!needle || o.name.toLowerCase().includes(needle) || o.tags.some((tag) => tag.toLowerCase().includes(needle))),
   );
   const columns: Column<VsphereObject>[] = [
@@ -1179,28 +1193,30 @@ function Inventory() {
         loading={inventory.isPending}
         error={inventory.isError && <ErrorState error={inventory.error} onRetry={() => void inventory.refetch()} />}
         toolbar={
-          <>
-            <TableSearch
-              label={t("infra.inventory.search")}
-              value={q}
-              onChange={setQ}
-              placeholder={t("infra.inventory.searchPlaceholder")}
-            />
-            <Select
-              aria-label={t("infra.inventory.kindColumn")}
+          <FilterBar
+            filters={filters}
+            search={{ label: t("infra.inventory.search"), placeholder: t("infra.inventory.searchPlaceholder") }}
+          >
+            <FilterSelect
+              name="kind"
+              label={t("infra.inventory.kindColumn")}
+              any={t("infra.inventory.kinds.all")}
+              options={inventoryKinds.map((value) => ({ value, label: t(`infra.inventory.kinds.${value}`) }))}
               className="w-40"
-              value={kind}
-              onChange={(v) => setKind(v as Kind | "all")}
-              options={kindFilters.map((value) => ({ value, label: t(`infra.inventory.kinds.${value}`) }))}
             />
-          </>
+          </FilterBar>
         }
         empty={
-          <EmptyState
-            icon={Server}
-            title={all?.length ? t("infra.inventory.nothingMatches") : t("infra.inventory.emptyTitle")}
-            body={all?.length ? t("infra.inventory.nothingMatchesBody") : t("infra.inventory.emptyBody")}
-          />
+          filters.filtered ? (
+            <FilterEmpty
+              filters={filters}
+              icon={Server}
+              title={t("infra.inventory.nothingMatches")}
+              body={t("infra.inventory.nothingMatchesBody")}
+            />
+          ) : (
+            <EmptyState icon={Server} title={t("infra.inventory.emptyTitle")} body={t("infra.inventory.emptyBody")} />
+          )
         }
       />
     </Panel>

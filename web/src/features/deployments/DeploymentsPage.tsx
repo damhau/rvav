@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Ellipsis, LayoutGrid, Plus, SearchX, Server, Table2 } from "lucide-react";
+import { Ellipsis, LayoutGrid, Plus, Server, Table2 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,10 +8,10 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
 import { Button, IconButton } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { DataTable, TableSearch, type Column, type Sort } from "@/components/ui/data-table";
+import { DataTable, type Column, type Sort } from "@/components/ui/data-table";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterCheck, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
@@ -19,7 +19,6 @@ import { Select } from "@/components/ui/select";
 import { Truncate } from "@/components/ui/truncate";
 import type { Day2Action, Deployment, DeploymentStatusFilter } from "@/lib/api/types";
 import { can } from "@/lib/can";
-import { useSearchBox } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentSort } from "@/lib/query";
@@ -37,6 +36,8 @@ import {
   type ListQuery,
 } from "./listing";
 import { PersonFilter } from "./PersonFilter";
+
+const filterKeys = ["status", "env", "item", "template", "owner", "q", "expiring"] as const;
 
 export interface DeploymentsSearch {
   status?: "ready" | "provisioning" | "failed" | "expired";
@@ -337,11 +338,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const { t } = useTranslation(["deployments", "common"]);
   const { me, projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
-  // The address keeps the search, without a history entry per keystroke.
-  const [text, setText] = useSearchBox(
-    search.q,
-    (next) => void navigate({ search: (s: DeploymentsSearch) => ({ ...s, q: next }), replace: true }),
-  );
+  const filters = useAddressFilters(search, filterKeys);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<(typeof bulkActions)[number] | null>(null);
   const { pick, dialog } = usePickedAction();
@@ -365,18 +362,9 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       sort: search.sort ?? "name",
     }),
   );
-  const filtered = Boolean(
-    search.status || envs.length || search.item || search.template || search.owner || search.q || search.expiring,
-  );
 
   const set = (patch: Partial<DeploymentsSearch>) =>
     void navigate({ search: (s: DeploymentsSearch) => ({ ...s, ...patch }), replace: true });
-  const clear = () => {
-    void navigate({
-      search: (s: DeploymentsSearch) => ({ sort: s.sort, layout: s.layout, project: s.project }),
-      replace: true,
-    });
-  };
   const apply = (query: ListQuery) => void navigate({ search: query as DeploymentsSearch });
   const setLayout = (next: Layout) => {
     rememberLayout("deployments", me.user.id, next);
@@ -394,80 +382,50 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
     ? (environments.data?.items.map((e) => e.key) ?? facets.data?.environments ?? [])
     : (ownProject.data?.environments ?? facets.data?.environments ?? []);
   const envOptions = [
-    { value: "any", label: t("list.allEnvironments") },
     ...envKeys.map((k) => ({ value: k, label: envName(k), meta: k })),
     ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
-    ...(envs.length === 1 && !envKeys.includes(envs[0]!) ? [{ value: envs[0]!, label: envs[0]! }] : []),
   ];
-  const itemOptions = [
-    { value: "any", label: t("list.allItems") },
-    ...(facets.data?.items.map((i) => ({ value: i.slug, label: i.name })) ?? []),
-    ...(search.item && !facets.data?.items.some((i) => i.slug === search.item)
-      ? [{ value: search.item, label: search.item }]
-      : []),
-  ];
-  const templates = [
-    ...(facets.data?.templates ?? []),
-    ...(search.template && !facets.data?.templates.includes(search.template) ? [search.template] : []),
-  ];
+  const templates = facets.data?.templates ?? [];
 
   const toolbar = (
-    <>
-      <TableSearch label={t("list.search")} placeholder={t("list.searchPlaceholder")} value={text} onChange={setText} />
-      <Select
-        aria-label={t("list.statusFilter")}
-        value={search.status ?? "any"}
-        onChange={(v) => set({ status: v === "any" ? undefined : (v as DeploymentsSearch["status"]) })}
-        options={[
-          { value: "any", label: t("list.allStatuses") },
-          ...statusKeys.map((k) => ({ value: k, label: t(`list.status.${k}`) })),
-        ]}
+    <FilterBar filters={filters} search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}>
+      <FilterSelect
+        name="status"
+        label={t("list.statusFilter")}
+        any={t("list.allStatuses")}
+        options={statusKeys.map((k) => ({ value: k, label: t(`list.status.${k}`) }))}
         className="w-40"
       />
-      <Select
-        aria-label={t("list.environment")}
-        value={search.env ?? "any"}
-        onChange={(v) => set({ env: v === "any" ? undefined : v })}
+      <FilterSelect
+        name="env"
+        label={t("list.environment")}
+        any={t("list.allEnvironments")}
         options={envOptions}
         className="w-44"
       />
-      <Select
-        aria-label={t("list.item")}
-        value={search.item ?? "any"}
-        onChange={(v) => set({ item: v === "any" ? undefined : v })}
-        options={itemOptions}
+      <FilterSelect
+        name="item"
+        label={t("list.item")}
+        any={t("list.allItems")}
+        options={facets.data?.items.map((i) => ({ value: i.slug, label: i.name })) ?? []}
         className="w-48"
       />
-      {templates.length > 0 && (
-        <Select
-          aria-label={t("list.template")}
-          value={search.template ?? "any"}
-          onChange={(v) => set({ template: v === "any" ? undefined : v })}
-          options={[{ value: "any", label: t("list.allTemplates") }, ...templates.map((x) => ({ value: x, label: x }))]}
+      {(templates.length > 0 || search.template) && (
+        <FilterSelect
+          name="template"
+          label={t("list.template")}
+          any={t("list.allTemplates")}
+          options={templates.map((x) => ({ value: x, label: x }))}
           className="w-52"
         />
       )}
       <PersonFilter
         label={t("list.ownerFilter")}
         value={search.owner === "me" ? undefined : search.owner}
-        onChange={(id) => set({ owner: id === me.user.id ? "me" : id })}
+        onChange={(id) => filters.set({ owner: id === me.user.id ? "me" : id })}
       />
-      <span className="flex items-center gap-2 text-body">
-        <Checkbox
-          id="deployments-mine"
-          checked={search.owner === "me"}
-          onChange={(v) => set({ owner: v ? "me" : undefined })}
-        />
-        <label htmlFor="deployments-mine">{t("list.onlyMine")}</label>
-      </span>
-      <span className="flex items-center gap-2 text-body">
-        <Checkbox
-          id="deployments-expiring"
-          checked={Boolean(search.expiring)}
-          onChange={(v) => set({ expiring: v || undefined })}
-        />
-        <label htmlFor="deployments-expiring">{t("list.expiring")}</label>
-      </span>
+      <FilterCheck name="owner" value="me" label={t("list.onlyMine")} />
+      <FilterCheck name="expiring" label={t("list.expiring")} />
       {layout === "cards" && (
         <Select
           aria-label={t("list.sortBy")}
@@ -482,25 +440,11 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
           className="w-44"
         />
       )}
-      {filtered && (
-        <Button variant="quiet" onClick={clear}>
-          {t("list.clear")}
-        </Button>
-      )}
-    </>
+    </FilterBar>
   );
 
-  const empty = filtered ? (
-    <EmptyState
-      icon={SearchX}
-      title={t("list.noMatch")}
-      body={t("list.noMatchBody")}
-      action={
-        <Button size="sm" onClick={clear}>
-          {t("list.clear")}
-        </Button>
-      }
-    />
+  const empty = filters.filtered ? (
+    <FilterEmpty filters={filters} title={t("list.noMatch")} body={t("list.noMatchBody")} />
   ) : (
     <EmptyState
       icon={Server}

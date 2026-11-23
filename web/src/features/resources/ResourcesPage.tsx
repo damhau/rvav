@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { HardDrive, SearchX } from "lucide-react";
+import { HardDrive } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,21 +8,22 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EnvBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { DataTable, TableSearch, type Column, type Sort } from "@/components/ui/data-table";
+import { DataTable, type Column, type Sort } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import { Truncate } from "@/components/ui/truncate";
 import type { VmListItem, VmPowerState } from "@/lib/api/types";
 import { formatSize } from "@/lib/format";
-import { useSearchBox } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { q, type VmSort } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { SavedViewsMenu, ScopeToggle, toQuery, type ListQuery } from "@/features/deployments/listing";
 import { VmPropertiesSheet } from "@/features/deployments/VmProperties";
+
+const filterKeys = ["env", "power", "vcenter", "cluster", "network", "q"] as const;
 
 export interface ResourcesSearch {
   /** Environment keys, separated by commas. */
@@ -241,10 +242,7 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   const { t } = useTranslation(["resources", "common"]);
   const { me, projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/resources" });
-  const [text, setText] = useSearchBox(
-    search.q,
-    (next) => void navigate({ search: (s: ResourcesSearch) => ({ ...s, q: next }), replace: true }),
-  );
+  const filters = useAddressFilters(search, filterKeys);
   const [shown, setShown] = useState<VmListItem | null>(null);
   const all = search.project === "all";
   const scope = all ? "" : projectId;
@@ -264,14 +262,8 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
       sort: search.sort ?? "name",
     }),
   );
-  const filtered = Boolean(
-    envs.length || search.power || search.vcenter || search.cluster || search.network || search.q,
-  );
-
   const set = (patch: Partial<ResourcesSearch>) =>
     void navigate({ search: (s: ResourcesSearch) => ({ ...s, ...patch }), replace: true });
-  const clear = () =>
-    void navigate({ search: (s: ResourcesSearch) => ({ sort: s.sort, project: s.project }), replace: true });
   const apply = (query: ListQuery) => void navigate({ search: query as ResourcesSearch });
 
   const items = list.data?.pages.flatMap((p) => p.items);
@@ -283,79 +275,49 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   const clusters = [
     ...new Set(vcenters.filter((v) => !search.vcenter || v.name === search.vcenter).flatMap((v) => v.clusters)),
   ].sort();
-  const keep = (values: string[], v: string | undefined) => (v && !values.includes(v) ? [...values, v] : values);
 
   const toolbar = (
-    <>
-      <TableSearch
-        label={t("toolbar.search")}
-        placeholder={t("toolbar.searchPlaceholder")}
-        value={text}
-        onChange={setText}
-      />
-      <Select
-        aria-label={t("toolbar.environment")}
-        value={search.env ?? "any"}
-        onChange={(v) => set({ env: v === "any" ? undefined : v })}
+    <FilterBar filters={filters} search={{ label: t("toolbar.search"), placeholder: t("toolbar.searchPlaceholder") }}>
+      <FilterSelect
+        name="env"
+        label={t("toolbar.environment")}
+        any={t("toolbar.allEnvironments")}
         options={[
-          { value: "any", label: t("toolbar.allEnvironments") },
-          ...keep(envKeys, envs.length === 1 ? envs[0] : search.env).map((k) => ({
-            value: k,
-            label: k.includes(",") ? k.split(",").join(", ") : envName(k),
-            meta: k.includes(",") ? undefined : k,
-          })),
+          ...envKeys.map((k) => ({ value: k, label: envName(k), meta: k })),
+          ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
         ]}
         className="w-44"
       />
-      <Select
-        aria-label={t("toolbar.power")}
-        value={search.power ?? "any"}
-        onChange={(v) => set({ power: v === "any" ? undefined : (v as VmPowerState) })}
-        options={[
-          { value: "any", label: t("toolbar.anyPower") },
-          ...powerStates.map((value) => ({ value, label: t(`power.${value}`) })),
-        ]}
+      <FilterSelect
+        name="power"
+        label={t("toolbar.power")}
+        any={t("toolbar.anyPower")}
+        options={powerStates.map((value) => ({ value, label: t(`power.${value}`) }))}
         className="w-40"
       />
-      <Select
-        aria-label="vCenter"
-        value={search.vcenter ?? "any"}
-        onChange={(v) => set({ vcenter: v === "any" ? undefined : v, cluster: undefined })}
-        options={[
-          { value: "any", label: t("toolbar.allVcenters") },
-          ...keep(
-            vcenters.map((v) => v.name),
-            search.vcenter,
-          ).map((v) => ({ value: v, label: v })),
-        ]}
+      <FilterSelect
+        name="vcenter"
+        label="vCenter"
+        any={t("toolbar.allVcenters")}
+        options={vcenters.map((v) => ({ value: v.name, label: v.name }))}
+        onChange={() => ({ cluster: undefined })}
         className="w-56"
       />
-      <Select
-        aria-label={t("toolbar.cluster")}
-        value={search.cluster ?? "any"}
-        onChange={(v) => set({ cluster: v === "any" ? undefined : v })}
-        options={[
-          { value: "any", label: t("toolbar.allClusters") },
-          ...keep(clusters, search.cluster).map((c) => ({ value: c, label: c })),
-        ]}
+      <FilterSelect
+        name="cluster"
+        label={t("toolbar.cluster")}
+        any={t("toolbar.allClusters")}
+        options={clusters.map((c) => ({ value: c, label: c }))}
         className="w-44"
       />
-      <Select
-        aria-label={t("toolbar.network")}
-        value={search.network ?? "any"}
-        onChange={(v) => set({ network: v === "any" ? undefined : v })}
-        options={[
-          { value: "any", label: t("toolbar.allNetworks") },
-          ...keep(facets.data?.networks ?? [], search.network).map((n) => ({ value: n, label: n })),
-        ]}
+      <FilterSelect
+        name="network"
+        label={t("toolbar.network")}
+        any={t("toolbar.allNetworks")}
+        options={(facets.data?.networks ?? []).map((n) => ({ value: n, label: n }))}
         className="w-52"
       />
-      {filtered && (
-        <Button variant="quiet" onClick={clear}>
-          {t("toolbar.clear")}
-        </Button>
-      )}
-    </>
+    </FilterBar>
   );
 
   return (
@@ -400,17 +362,8 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
           error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
           toolbar={toolbar}
           empty={
-            filtered ? (
-              <EmptyState
-                icon={SearchX}
-                title={t("page.noMatch")}
-                body={t("page.noMatchBody")}
-                action={
-                  <Button size="sm" onClick={clear}>
-                    {t("toolbar.clear")}
-                  </Button>
-                }
-              />
+            filters.filtered ? (
+              <FilterEmpty filters={filters} title={t("page.noMatch")} body={t("page.noMatchBody")} />
             ) : (
               <EmptyState
                 icon={HardDrive}

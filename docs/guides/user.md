@@ -361,6 +361,9 @@ To narrow the list:
   **Only mine**;
 - select **Lease ends within 7 days**.
 
+To remove every filter, select **Clear filters**. The sort and the layout
+stay as they are.
+
 To sort, select a column's header; select it again to reverse the order.
 The whole list is sorted, not only the deployments loaded. To see the
 deployments as cards, select **Cards** beside **Table**: sort them with

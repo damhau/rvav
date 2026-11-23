@@ -1,22 +1,20 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { CalendarClock, Inbox, Plus, SearchX } from "lucide-react";
+import { CalendarClock, Inbox, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterCheck, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
 import { can } from "@/lib/can";
-import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { Drafts } from "./Drafts";
@@ -90,12 +88,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
   const settings = useQuery({ ...q.project(projectId), enabled: projectId !== "" });
   // Under Owners only, a member sees the requests they made or own, nothing else to narrow to (ADR-0045).
   const ownOnly = settings.data?.deployment_sharing === "owner_only" && !can(me, "deployments.read_all", projectId);
-  const navigate = useNavigate({ from: "/requests/" });
-  // The address keeps the search, without a history entry per keystroke.
-  const [text, setText] = useSearchBox(
-    search.q,
-    (next) => void navigate({ search: (s: RequestsSearch) => ({ ...s, q: next }), replace: true }),
-  );
+  const filters = useAddressFilters(search, ["status", "mine", "q"]);
   const list = useInfiniteQuery(
     q.requests({
       projectId,
@@ -104,13 +97,6 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
       q: search.q,
     }),
   );
-  const filtered = Boolean(search.status || search.mine || search.q);
-
-  const set = (patch: Partial<RequestsSearch>) =>
-    void navigate({ search: (s: RequestsSearch) => ({ ...s, ...patch }), replace: true });
-  const clear = () => {
-    void navigate({ search: {}, replace: true });
-  };
 
   return (
     <Page>
@@ -153,52 +139,20 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
           loading={list.isPending}
           error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
           toolbar={
-            <>
-              <TableSearch
-                label={t("list.search")}
-                placeholder={t("list.searchPlaceholder")}
-                value={text}
-                onChange={setText}
-              />
-              <Select
-                aria-label={t("list.status")}
-                value={search.status ?? "any"}
-                onChange={(v) => set({ status: v === "any" ? undefined : (v as RequestsSearch["status"]) })}
-                options={[
-                  { value: "any", label: t("list.allStatuses") },
-                  ...requestFilters.map((k) => ({ value: k, label: t(`list.filter.${k}`) })),
-                ]}
+            <FilterBar filters={filters} search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}>
+              <FilterSelect
+                name="status"
+                label={t("list.status")}
+                any={t("list.allStatuses")}
+                options={requestFilters.map((k) => ({ value: k, label: t(`list.filter.${k}`) }))}
                 className="w-48"
               />
-              {!ownOnly && (
-                <span className="flex items-center gap-2 text-body">
-                  <Checkbox
-                    id="requests-mine"
-                    checked={Boolean(search.mine)}
-                    onChange={(v) => set({ mine: v || undefined })}
-                  />
-                  <label htmlFor="requests-mine">{t("list.onlyMine")}</label>
-                </span>
-              )}
-              {filtered && (
-                <Button variant="quiet" onClick={clear}>
-                  {t("list.clear")}
-                </Button>
-              )}
-            </>
+              {!ownOnly && <FilterCheck name="mine" label={t("list.onlyMine")} />}
+            </FilterBar>
           }
           empty={
-            filtered ? (
-              <EmptyState
-                icon={SearchX}
-                title={t("list.noMatch")}
-                body={t("list.noMatchBody")}
-                action={
-                  <Button size="sm" onClick={clear}>
-                    {t("list.clear")}
-                  </Button>
-                }
-              />
+            filters.filtered ? (
+              <FilterEmpty filters={filters} title={t("list.noMatch")} body={t("list.noMatchBody")} />
             ) : (
               <EmptyState
                 icon={Inbox}

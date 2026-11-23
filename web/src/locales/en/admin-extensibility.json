@@ -134,8 +134,7 @@
     "none": "No run yet",
     "noneBody": "It runs for each event that matches. To see one now, send it a test event from the menu above.",
     "noneWith": "No run with the status {{status}}",
-    "noneWithBody": "Other runs may have another status.",
-    "showAll": "Show every run"
+    "noneWithBody": "Other runs may have another status."
   },
   "subscriptions": {
     "runs": "{{delivered}} delivered, {{failed}} failed, {{pending}} waiting",

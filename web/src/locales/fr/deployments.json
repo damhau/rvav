@@ -73,7 +73,6 @@
     "onlyMine": "Les miens seulement",
     "expiring": "Bail se terminant d'ici 7\u00a0jours",
     "sortBy": "Trier par",
-    "clear": "Effacer les filtres",
     "noMatch": "Aucun déploiement ne correspond",
     "noMatchBody": "Essayez d'autres mots, ou d'autres filtres.",
     "noneAll": "Rien de déployé dans vos projets pour l'instant",

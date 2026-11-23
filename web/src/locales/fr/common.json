@@ -43,6 +43,10 @@
     "sortBy": "Trier par",
     "scrolls": "{{label}}, défile horizontalement"
   },
+  "filters": {
+    "label": "Filtres",
+    "clear": "Effacer les filtres"
+  },
   "breadcrumb": "Fil d'Ariane",
   "blocked": {
     "toOverview": "Aller à la vue d'ensemble",

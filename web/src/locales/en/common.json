@@ -42,6 +42,10 @@
     "sortBy": "Sort by",
     "scrolls": "{{label}}, scrolls sideways"
   },
+  "filters": {
+    "label": "Filters",
+    "clear": "Clear filters"
+  },
   "breadcrumb": "Breadcrumb",
   "blocked": {
     "toOverview": "Go to the overview",

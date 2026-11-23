@@ -156,7 +156,7 @@ describe("A subscription's page", () => {
     await user.click(screen.getByRole("combobox", { name: "Status" }));
     await user.click(await screen.findByRole("option", { name: "Stopped the request" }));
     expect(await screen.findByText("No run with the status Stopped the request")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show every run" }));
+    await user.click(screen.getAllByRole("button", { name: "Clear filters" }).at(-1)!);
     expect(await screen.findByRole("table", { name: "Runs" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Change subscription" }));

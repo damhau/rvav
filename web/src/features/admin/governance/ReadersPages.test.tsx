@@ -159,7 +159,11 @@ describe("project pickers for who holds a page's permissions alone", () => {
     holding("audit.read");
     renderApp("/admin/audit");
     const filter = await screen.findByRole("combobox", { name: "Project" });
-    expect(await optionsOf(filter, "Old Platform (archived)")).toEqual(["Any", ...every, "Old Platform (archived)"]);
+    expect(await optionsOf(filter, "Old Platform (archived)")).toEqual([
+      "All projects",
+      ...every,
+      "Old Platform (archived)",
+    ]);
     expect(refused).toEqual([]);
   });
 });

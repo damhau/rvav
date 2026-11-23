@@ -41,7 +41,7 @@ describe("Catalog items", () => {
 
   it("filters the items by kind, and says how to clear a filter that matches nothing", async () => {
     const u = user();
-    renderApp("/admin/catalog-items");
+    const { router } = renderApp("/admin/catalog-items");
     const items = await screen.findByRole("region", { name: "Items" });
     await within(items).findByRole("row", { name: /RHEL 9 server/ });
     await u.click(within(items).getByRole("combobox", { name: "Kind" }));
@@ -51,8 +51,10 @@ describe("Catalog items", () => {
 
     await u.type(within(items).getByRole("searchbox", { name: "Search items" }), "nothing like it");
     expect(await within(items).findByText("No item matches")).toBeInTheDocument();
-    await u.click(within(items).getByRole("button", { name: "Clear the filters" }));
+    expect(router.state.location.search).toMatchObject({ kind: "awx_workflow", q: "nothing like it" });
+    await u.click(within(items).getAllByRole("button", { name: "Clear filters" }).at(-1)!);
     expect(await within(items).findByRole("row", { name: /RHEL 9 server/ })).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({});
   });
 
   it("creates an item in a side panel", async () => {

@@ -608,7 +608,8 @@
     "searchPlaceholder": "Name, address or host name",
     "folder": "Folder",
     "power": "Power",
-    "any": "Any",
+    "allVcenters": "All vCenters",
+    "allPowerStates": "All power states",
     "on": "On",
     "off": "Off",
     "suspended": "Suspended",
@@ -619,8 +620,7 @@
     "atMostSuffix": " · at most {{n}} at once",
     "nothing": "Nothing to adopt",
     "noMatch": "No VM rvav doesn't manage matches these filters.",
-    "allManaged": "Every VM the inventory has is managed by rvav.",
-    "clear": "Clear filters"
+    "allManaged": "Every VM the inventory has is managed by rvav."
   },
   "catalogItems": {
     "description": "Build items, publish their versions and choose which projects may request them.",
@@ -994,7 +994,7 @@
       "workflow": "workflow"
     },
     "kind": {
-      "any": "Anything",
+      "any": "All events",
       "catalog": "Catalog",
       "project": "Projects",
       "member": "Members",
@@ -1034,10 +1034,9 @@
     "events": "Audit events",
     "search": "Search",
     "searchPlaceholder": "Who, what, target",
-    "any": "Any",
+    "allProjects": "All projects",
     "fromDay": "From",
     "toDay": "To",
-    "clear": "Clear filters",
     "nothingFound": "Nothing found",
     "noMatch": "No event matches these filters.",
     "nothingYet": "Nothing recorded yet",

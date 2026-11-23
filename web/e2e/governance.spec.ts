@@ -38,8 +38,8 @@ test("search the audit log and export it", async ({ page }) => {
   await expect(page.getByText("token.create")).toBeVisible();
   await expect(page.getByText("catalog.version.publish")).toBeHidden();
   await page.getByRole("combobox", { name: "What" }).click();
-  await page.getByRole("option", { name: "Anything" }).click();
-  await page.getByRole("textbox", { name: "Search" }).fill("tnguyen");
+  await page.getByRole("option", { name: "All events" }).click();
+  await page.getByRole("searchbox", { name: "Search" }).fill("tnguyen");
   await expect(page.getByText("member.set")).toBeVisible();
   await expect(page.getByText("token.create")).toBeHidden();
   const download = page.waitForEvent("download");

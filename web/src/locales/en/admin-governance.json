@@ -727,7 +727,6 @@
       "archivedToo": "Archived ones too",
       "noMatch": "No project matches",
       "noMatchBody": "Search by name or code.",
-      "clear": "Clear the search",
       "emptyTitle": "No projects yet",
       "emptyBody": "A project is who requests: its members, the environments it deploys to, where its VMs go and its quotas.",
       "open": "Open"

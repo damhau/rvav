@@ -186,7 +186,7 @@ describe("system, setup, branding and the audit log, in French", () => {
 
 describe("onboarding, AWX's templates and day-2 actions, in French", () => {
   async function search(user: ReturnType<typeof userEvent.setup>, text: string, found: string) {
-    const box = await screen.findByRole("textbox", { name: "Rechercher" });
+    const box = await screen.findByRole("searchbox", { name: "Rechercher" });
     await user.clear(box);
     await user.click(box);
     await user.paste(text);

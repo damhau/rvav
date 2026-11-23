@@ -100,7 +100,7 @@ describe("subscriptions, in French", () => {
     await user.click(screen.getByRole("combobox", { name: "Statut" }));
     await user.click(await screen.findByRole("option", { name: "A arrêté la demande" }));
     expect(await screen.findByText("Aucune exécution au statut A arrêté la demande")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Afficher toutes les exécutions" }));
+    await user.click(screen.getAllByRole("button", { name: "Effacer les filtres" }).at(-1)!);
     expect(await screen.findByRole("table", { name: "Exécutions" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Modifier l'abonnement" })).toBeInTheDocument();
   });

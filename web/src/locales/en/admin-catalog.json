@@ -65,7 +65,6 @@
     "stateUnpublished": "Not published",
     "noMatch": "No item matches",
     "noMatchBody": "Nothing in the catalog has this name, kind, category and state.",
-    "clearFilters": "Clear the filters",
     "empty": "No items yet",
     "emptyBody": "An item is what people request: a VM, an AWX job, a workflow, or several of them together.",
     "actionsFor": "Actions for {{name}}",

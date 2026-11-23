@@ -190,7 +190,6 @@
     "status": "Statut",
     "allStatuses": "Tous les statuts",
     "onlyMine": "Les miennes seulement",
-    "clear": "Effacer les filtres",
     "noMatch": "Aucune demande ne correspond",
     "noMatchBody": "Essayez d'autres mots, ou un autre statut.",
     "none": "Rien n'a encore été demandé dans {{project}}",
