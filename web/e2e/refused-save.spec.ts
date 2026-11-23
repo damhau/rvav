@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { bothThemes, scan } from "./axe";
-import { chooseIn, chooseItem, press, tabTo, typeInto } from "./keyboard";
+import { bothThemes, scan, settled } from "./axe";
+import { chooseIn, chooseItem, drawn, press, tabTo, typeInto } from "./keyboard";
 
 // A save the server refuses, from the keyboard (#199): the focus goes to the
 // field the refusal names once that field is marked, so a screen reader reads
@@ -169,7 +169,8 @@ test("an update refused once confirmed leaves the focus on the field to fix, not
   await expect(size).toContainText("X-Large is no longer offered in tst.");
   await expect(size.locator(":focus")).toHaveCount(1);
   // The dialog gives the focus back a task after it has gone: it stays.
-  await page.waitForTimeout(500);
+  await drawn(page);
+  await drawn(page);
   await expect(size.locator(":focus")).toHaveCount(1);
   await expect(review).not.toBeFocused();
   await bothThemes(page, "an update refused once confirmed");
@@ -187,7 +188,8 @@ test.describe("in French", () => {
       await page.getByRole("button", { name: /^Thème/ }).click();
       await page.getByRole("menuitem", { name }).click();
       await expect(page.locator("html")).toHaveAttribute("data-theme", value);
-      await page.waitForTimeout(500);
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await settled(page);
       await scan(page, `${where}, ${value}`);
     }
   }

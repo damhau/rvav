@@ -22,6 +22,19 @@ export async function scan(page: Page, where: string) {
   expect(found, found.join("\n")).toEqual([]);
 }
 
+/**
+ * Settled: the fonts loaded and every transition and animation that ends
+ * ended, so axe and a screenshot see the colours and places they end on.
+ */
+export async function settled(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    const ending = document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity);
+    await Promise.all(ending.map((a) => a.finished.catch(() => undefined)));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
+
 // In the app: a reload would start the mock backend afresh.
 export async function theme(page: Page, name: "Light" | "Dark") {
   await page.getByRole("button", { name: /^Theme/ }).click();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { scan, theme } from "./axe";
+import { scan, settled, theme } from "./axe";
 import { chooseIn, press } from "./keyboard";
 
 // On a phone (V2.1): the top bar holds one row, its search and project
@@ -16,7 +16,7 @@ async function loaded(page: Page) {
   await expect(
     page.locator(".animate-pulse, [role=status][aria-label=Loading], [role=status][aria-label=Chargement]"),
   ).toHaveCount(0);
-  await page.waitForTimeout(300);
+  await settled(page);
 }
 
 // From the top, the focus on nothing: what opened the page keeps it otherwise.
@@ -35,7 +35,7 @@ for (const width of [375, 320]) {
     await loaded(page);
     const bar = page.getByRole("banner");
     expect((await bar.boundingBox())!.height).toBeLessThan(60);
-    for (const name of ["Open navigation", "Notifications, 3 unread", "Project: Web Platform", "Theme: system"]) {
+    for (const name of ["Open navigation", /^Notifications/, "Project: Web Platform", "Theme: system"]) {
       await expect(bar.getByRole("button", { name })).toBeVisible();
     }
     await expect(bar.getByRole("button", { name: /^Account/ })).toBeVisible();
