@@ -19,8 +19,9 @@ describe("IP ranges", () => {
     expect(row).toHaveTextContent("dvpg-app-tst-vl410vc01.corp.example");
     expect(row).toHaveTextContent("10.41.10.200 – 10.41.10.239");
     expect(row).toHaveTextContent("10.41.10.0/24 via 10.41.10.1, 2 excluded");
-    // lab-tst-build01 holds .230, which the range didn't give it: skipped.
-    expect(row).toHaveTextContent("29 free5 / 34");
+    // lab-tst-build01 holds .230, which the range didn't give it: skipped, and
+    // said apart from the 4 addresses the range gave.
+    expect(row).toHaveTextContent("29 free · 1 skipped4 / 34");
     expect(row).toHaveTextContent("lab.corp.example");
 
     await user.click(within(region).getByRole("button", { name: "Actions for Test lab" }));
@@ -30,6 +31,7 @@ describe("IP ranges", () => {
     expect(backup).toHaveTextContent("web-tst-lab002adapter backup");
     expect(backup).toHaveTextContent("web-tst-lab");
     expect(within(sheet).getByRole("row", { name: /10\.41\.10\.205/ })).toHaveTextContent("Gone");
+    expect(sheet).toHaveTextContent("29 free · 1 skipped4 / 34");
     expect(sheet).toHaveTextContent("rvav skips 1 address of this range");
   });
 

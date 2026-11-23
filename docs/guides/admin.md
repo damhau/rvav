@@ -684,8 +684,9 @@ or choose a span apart from them.
 A network can have several ranges, all with the same subnet, gateway and
 DNS settings; ranges of a vCenter don't overlap. rvav gives the first free address of
 the network's ranges, in the order you made them. It skips an address that a
-VM got some other way after you saved the range, and the range's
-**Addresses given** shows how many it skips. The **Networks** tab
+VM got some other way after you saved the range. A range's **Given** meter
+counts the addresses it gave to VMs, out of those it gives, and says how
+many it skips apart; **Addresses given** says why. The **Networks** tab
 shows each network's source: **rvav IP ranges**, **EfficientIP** or **By
 hand**.
 

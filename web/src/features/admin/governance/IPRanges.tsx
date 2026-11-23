@@ -36,6 +36,18 @@ const split = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/** The addresses a range gave to VMs, of those it gives; those it skips are said apart. */
+function Usage({ range }: { range: S["IpRange"] }) {
+  const { t } = useTranslation("admin-governance");
+  const label = [
+    t("ipRanges.free", { count: range.free }),
+    range.taken > 0 && t("ipRanges.skips", { count: range.taken }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return <Meter label={label} used={range.used} total={range.size} />;
+}
+
 function invalidate(qc: ReturnType<typeof useQueryClient>) {
   for (const queryKey of [
     ["admin", "ip-ranges"],
@@ -250,7 +262,7 @@ function AddressesSheet({ range, onClose }: { range: S["IpRange"]; onClose: () =
       title={t("ipRanges.addressesOf", { name: range.name })}
       description={t("ipRanges.addressesLead", { network: range.network, vcenter: range.vcenter })}
     >
-      <Meter label={t("ipRanges.free", { count: range.free })} used={range.used + range.taken} total={range.size} />
+      <Usage range={range} />
       {range.taken > 0 && <p className="text-secondary text-muted">{t("ipRanges.skipped", { count: range.taken })}</p>}
       <DataTable
         label={t("ipRanges.addressesGiven")}
@@ -512,9 +524,9 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
     {
       id: "usage",
       header: t("ipRanges.given"),
-      sortValue: (r) => (r.size ? (r.used + r.taken) / r.size : 0),
+      sortValue: (r) => (r.size ? r.used / r.size : 0),
       className: "min-w-40",
-      cell: (r) => <Meter label={t("ipRanges.free", { count: r.free })} used={r.used + r.taken} total={r.size} />,
+      cell: (r) => <Usage range={r} />,
     },
     {
       id: "dns",
