@@ -44,8 +44,8 @@ features delivered in 1.0.
 
 This table credits a feature once its slice is built. The finer count,
 129 features checked in the code on 2026-11-18 and counted again after
-each parity milestone, is in [vra-parity.md](vra-parity.md): 85% after O1
-(84.7% before rounding) with a partial feature counted as half, 90%
+each parity milestone, is in [vra-parity.md](vra-parity.md): 87% after I1
+(86.6% before rounding) with a partial feature counted as half, 91%
 counted as three quarters.
 
 **Result: 83% in the core 1.0 scope, 86% with the four stretch items
@@ -542,7 +542,10 @@ a composite, stored files, a debugger, triggers on AMQP, SNMP or
 incoming webhooks). After O1, the same day, it counts 85% (84.7%): A31,
 A32 and D19 are Full; A33 misses rvav's server text in French, D18 the
 release archives of its command line, provider and module, and D21 a
-lifecycle console.
+lifecycle console. After I1 (2026-11-23), it counts 87% (86.6%): C2,
+C11, C16, C31 and D27 are Full, with several NSX Managers, IP ranges,
+the VM designer, AD computer objects and ServiceNow, and C30 keeps
+ignoreChanges missing.
 
 | Milestone | What it covers | Parity rows |
 |---|---|---|
