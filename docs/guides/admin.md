@@ -1752,12 +1752,12 @@ An item's tabs:
     group**, an **NSX group**, a **Disk** or a **Custom resource**. Its
     dialog asks for what the part needs: a key, a network's CEL
     (`inputs.network`, or a quoted name such as `"dvpg-web"`), a disk's
-    size in GB, a resource's type. A network, an NSX group or a disk goes
-    on the VM you drop it on, or the one in **Connected to**, the
-    selected VM by default. To add a second VM to an item with one, give
-    the item's VM a key in **Key of the VM there is**: it becomes the
-    first of `components`, and the blueprint's settings, such as its
-    template and guest settings, stay the defaults of both.
+    size in GB, a resource's type among those turned on. A network, an
+    NSX group or a disk goes on the VM you drop it on, or the one in
+    **Connected to**, the selected VM by default. To add a second VM to an
+    item with one, give the item's VM a key in **Key of the existing VM**:
+    it becomes the first of `components`, and the blueprint's settings,
+    such as its template and guest settings, stay the defaults of both.
   - To connect two nodes, drag from one node's dot to the other, or select
     a node and pick the other in **Connect to**, which says what
     **Connect** will write, or why it can't, before you click. A VM

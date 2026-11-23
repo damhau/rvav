@@ -148,7 +148,12 @@ describe("the VM designer", longTests, () => {
 
     await user.click(within(palette()).getByRole("button", { name: "Custom resource" }));
     dialog = await screen.findByRole("dialog", { name: "Add a custom resource" });
-    await pick(user, await within(dialog).findByRole("combobox", { name: "Resource type" }), /^Load balancer/);
+    const type = await within(dialog).findByRole("combobox", { name: "Resource type" });
+    await user.click(type);
+    // DNS alias is turned off: publishing would refuse it.
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Load balancerload-balancer"]);
+    await user.keyboard("{Escape}");
+    await pick(user, type, /^Load balancer/);
     await fill(user, dialog, { Key: "web" });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("A component or a resource has the key web already.");
     expect(blueprint().resources).toBeUndefined();

@@ -354,8 +354,9 @@ function AddDialog({
     onClose();
   };
 
+  // A turned-off type would only be refused when the item is published.
   const typeOptions = (types.data?.items ?? []).flatMap((r) =>
-    r.key ? [{ value: r.key, label: r.title || r.key, meta: r.key }] : [],
+    r.key && r.enabled ? [{ value: r.key, label: r.title || r.key, meta: r.key }] : [],
   );
   const keyed = part === "component" || part === "segment" || part === "sg" || part === "resource";
   const first =
