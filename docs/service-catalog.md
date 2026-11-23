@@ -556,6 +556,21 @@ literal is quoted: `'"vsan-01"'`); numbers are themselves. `project` has
 `id`, `code`, `name` and `properties`, the project's custom properties.
 The other fields are plain values.
 
+A binding written as a number or a boolean, as YAML gives `memory_gb: 4`,
+is that constant, as if it were the string `"4"`. Saving a draft refuses,
+at its field and in words:
+
+- a value of the wrong kind, such as a list where a binding's CEL is
+  (`/blueprint/bindings/memory_gb`) or a number where a name is;
+- CEL that reads an input the form doesn't have, its property groups'
+  inputs among them: `network: inputs.zone` with no `zone` in the form is
+  refused at `/blueprint/bindings/network`, as a request would fail on it.
+  This holds for bindings, counts, disks, adapters and custom resources'
+  `with`.
+
+Publishing refuses the same. A draft saved before these checks still
+opens, and its next save or publish names what to fix.
+
 CEL in rvav, here as in form rules, policies, composites and
 subscriptions, has CEL's string functions: `lowerAscii()`, `upperAscii()`,
 `trim()`, `replace(old, new)`, `split(sep)`, a list's `join(sep)`,

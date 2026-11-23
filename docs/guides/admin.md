@@ -1624,6 +1624,10 @@ memory (`bindings.vcpu`, `bindings.memory_gb`): change them on its
 ([VM blueprints](../service-catalog.md#vm-blueprints)). To publish a VM
 item, give it its template, and give each VM its CPU and memory: rvav
 refuses one without, or with a plain number below 1, at that binding.
+In the YAML, `memory_gb: 4` and `memory_gb: "4"` mean the same. Saving a
+draft refuses, at its field, a binding that is a list, and CEL that reads
+an input the form doesn't have, such as `inputs.zone` without a `zone`
+input.
 
 An item's page has its main action in its header: **Publish** the
 draft, or **New draft** from the published version. Publishing waits

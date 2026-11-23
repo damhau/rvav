@@ -2,10 +2,13 @@
 // (internal/core/blueprint_check.go): its CEL compiled against the variables
 // a request has, its keys, counts, parts, groups and what it is built after.
 // Of the checks only publish makes, the VMs' CPU and memory are here
-// (vmSizeProblems); a template and an OS family are left out.
+// (vmSizeProblems); a template and an OS family are left out. A binding
+// written as a number or a boolean is that constant, as the server's
+// blueprint.Bindings reads it; a list or keys and values don't parse, and
+// that is all the server says (parseProblem).
 
 import type { components } from "@/lib/api/schema";
-import { buildVariables, celRoots, formVariables } from "@/lib/celReads";
+import { buildVariables, celRoots, formVariables, inputsRead } from "@/lib/celReads";
 import { celCheck } from "./cel";
 
 type FieldError = components["schemas"]["FieldError"];
@@ -21,6 +24,44 @@ const singleKey = "vm";
 const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
+const bound = (v: unknown): string => (typeof v === "number" || typeof v === "boolean" ? String(v) : text(v));
+const words = (v: unknown): string =>
+  Array.isArray(v)
+    ? "a list"
+    : v === null
+      ? "null"
+      : typeof v === "object"
+        ? "keys and values"
+        : typeof v === "string"
+          ? "text"
+          : typeof v === "boolean"
+            ? "true or false"
+            : "a number";
+
+/** The one problem the server's blueprint.Parse finds in a VM blueprint's bindings, if any. */
+function bindingsShape(bp: Rec, ptr: string): FieldError | null {
+  const owners: [string, unknown][] = [
+    [ptr, bp.bindings],
+    ...list(bp.components).map((c, i): [string, unknown] => [`${ptr}/components/${i}`, rec(c).bindings]),
+  ];
+  for (const [at, m] of owners) {
+    if (m === undefined || m === null) continue;
+    if (typeof m !== "object" || Array.isArray(m))
+      return {
+        field: `${at}/bindings`,
+        code: "invalid",
+        message: `This is ${words(m)}, where the blueprint takes bindings by name, as {memory_gb: "4"}.`,
+      };
+    for (const [k, v] of Object.entries(m as Rec))
+      if (v && typeof v === "object")
+        return {
+          field: `${at}/bindings/${k}`,
+          code: "invalid",
+          message: `This is ${words(v)}, where the blueprint takes CEL in quotes ("inputs.network") or a number.`,
+        };
+  }
+  return null;
+}
 
 /** What cel-go says of an expression against these variables, or null when it compiles. */
 function compile(expr: string, known: ReadonlySet<string>): string | null {
@@ -34,6 +75,8 @@ function compile(expr: string, known: ReadonlySet<string>): string | null {
 
 /** The problems of a VM blueprint (kind vm, or none) at ptr, as the server finds them on save. */
 export function vmBlueprintProblems(bp: Rec, ptr: string): FieldError[] {
+  const shape = bindingsShape(bp, ptr);
+  if (shape) return [shape];
   const errs: FieldError[] = [];
   const add = (field: string, code: string, message: string) => errs.push({ field, code, message });
   const cel = (at: string, expr: string, what: string, hint = "") => {
@@ -42,7 +85,8 @@ export function vmBlueprintProblems(bp: Rec, ptr: string): FieldError[] {
   };
   const bindings = (at: string, m: unknown) => {
     for (const [k, v] of Object.entries(rec(m)).sort(([a], [b]) => a.localeCompare(b))) {
-      const expr = text(v);
+      if (v === null) continue;
+      const expr = bound(v);
       const roots = celRoots(expr);
       const built = !celCheck(expr) && (roots.includes("self") || roots.includes("components"));
       if (!built) cel(`${at}/${k}`, expr, "This binding");
@@ -288,11 +332,51 @@ export function vmSizeProblems(bp: Rec, ptr: string): FieldError[] {
   const errs: FieldError[] = [];
   for (const { at, bindings } of owners)
     for (const b of sizeBindings) {
-      const expr = text(bindings[b.key]).trim();
+      const expr = bound(bindings[b.key]).trim();
       const field = `${at}/bindings/${b.key}`;
       if (!expr) errs.push({ field, code: "required", message: b.missing });
       else if (/^-?\d+(\.\d+)?$/.test(expr) && (!Number.isInteger(Number(expr)) || Number(expr) < 1))
         errs.push({ field, code: "out_of_range", message: b.small });
     }
+  return errs;
+}
+
+/**
+ * As the server's checkInputReads: a VM blueprint's CEL reads only the
+ * form's inputs, its property groups' among them; a request would fail on
+ * another.
+ */
+export function vmInputProblems(bp: Rec, ptr: string, inputs: ReadonlySet<string>): FieldError[] {
+  if (text(bp.kind) !== "vm" || bindingsShape(bp, ptr)) return [];
+  const errs: FieldError[] = [];
+  const read = (at: string, expr: string) => {
+    if (!expr || celCheck(expr)) return;
+    const name = inputsRead(expr).find((n) => !inputs.has(n));
+    if (name)
+      errs.push({
+        field: at,
+        code: "unknown_input",
+        message: `This reads inputs.${name}, and "${name}" is not an input of the form's schema.`,
+      });
+  };
+  const sorted = (m: unknown) => Object.entries(rec(m)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const parts = (at: string, owner: Rec) => {
+    for (const [k, v] of sorted(owner.bindings)) read(`${at}/bindings/${k}`, bound(v));
+    list(owner.disks).forEach((raw, i) => {
+      const d = rec(raw);
+      read(`${at}/disks/${i}/size_gb`, text(d.size_gb));
+      read(`${at}/disks/${i}/datastore`, text(d.datastore));
+    });
+    list(owner.nics).forEach((raw, i) => read(`${at}/nics/${i}/network`, text(rec(raw).network)));
+  };
+  parts(ptr, bp);
+  list(bp.components).forEach((raw, i) => {
+    const c = rec(raw);
+    read(`${ptr}/components/${i}/count`, text(c.count));
+    parts(`${ptr}/components/${i}`, c);
+  });
+  list(bp.resources).forEach((raw, i) => {
+    for (const [k, v] of sorted(rec(raw).with)) read(`${ptr}/resources/${i}/with/${k}`, text(v));
+  });
   return errs;
 }

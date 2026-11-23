@@ -10,7 +10,7 @@ import { ownSources } from "@/forms/useFieldValues";
 import { eachStep, parseUrl, readComposite, secretInMessages, variablesRead } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
-import { vmBlueprintProblems, vmSizeProblems } from "./vmBlueprint";
+import { vmBlueprintProblems, vmInputProblems, vmSizeProblems } from "./vmBlueprint";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
@@ -745,6 +745,12 @@ type BlueprintStep = {
  * As the server's checkVMSteps, on save and publish: what a VM step can't be
  * or have, its VMs planned when the request is submitted.
  */
+/** As the server's checkInputReads, on save and to publish: what a VM blueprint reads of inputs, the form has. */
+function inputReadProblems(db: Db, def: Definition, prefix: string): S["FieldError"][] {
+  const props = (withGroups(db, def).schema as { properties?: Record<string, unknown> }).properties ?? {};
+  return vmInputProblems(def.blueprint, `${prefix}/blueprint`, new Set(Object.keys(props)));
+}
+
 function vmStepProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
   const b = (bp ?? {}) as { steps?: BlueprintStep[]; on_error?: BlueprintStep[] };
   const out: S["FieldError"][] = [];
@@ -1411,6 +1417,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...check(u.definition, "/definition"),
         ...libraryRefProblems(db, u.definition.ui_schema, "/definition", false),
         ...vmStepProblems(db, u.definition.blueprint, "/definition/blueprint"),
+        ...inputReadProblems(db, u.definition, "/definition"),
       ];
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       if (u.base_revision !== undefined && u.base_revision !== v.revision)
@@ -1456,6 +1463,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...vmStepProblems(db, v.definition.blueprint, "/definition/blueprint"),
         ...variableProblems(db, v.definition.blueprint, "/definition/blueprint"),
         ...vmSizeProblems(v.definition.blueprint, "/definition/blueprint"),
+        ...inputReadProblems(db, v.definition, "/definition"),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       if (!body.keep_published)
@@ -1600,7 +1608,10 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         return problem(422, "Some inputs need attention", [
           { field: "/versions", code: "required", message: "The item has no version." },
         ]);
-      const errors = versions.flatMap((v, i) => check(v, `/versions/${i}`));
+      const errors = versions.flatMap((v, i) => [
+        ...check(v, `/versions/${i}`),
+        ...inputReadProblems(db, v, `/versions/${i}`),
+      ]);
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       const def = (v: Definition): Definition => ({
         form_schema: v.form_schema,

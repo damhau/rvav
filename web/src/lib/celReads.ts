@@ -66,6 +66,13 @@ export function celRoots(expr: string): string[] {
   return [...out];
 }
 
+/** The inputs an expression reads by name, as inputs.<name> or inputs["<name>"] (policy.ReadsOf). */
+export function inputsRead(expr: string): string[] {
+  const dotted = [...celCode(expr).matchAll(/(?<![\w.])inputs\s*\.\s*([A-Za-z_]\w*)/g)].map((m) => m[1]!);
+  const indexed = [...expr.matchAll(/(?<![\w.])inputs\s*\[\s*(["'])(\w+)\1\s*\]/g)].map((m) => m[2]!);
+  return [...new Set([...dotted, ...indexed])];
+}
+
 /** The first variable an expression reads that `known` doesn't have, if any. */
 export function undeclared(expr: string, known: ReadonlySet<string> = formVariables): string | undefined {
   return celRoots(expr).find((r) => !known.has(r));

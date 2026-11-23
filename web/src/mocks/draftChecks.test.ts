@@ -1,6 +1,7 @@
 // The mocks check a VM item's draft and publish it as the server does
 // (internal/core/blueprint_check.go): the size New item gives it, and the
-// CPU and memory publishing needs, at the binding.
+// CPU and memory publishing needs, at the binding; what its bindings are
+// and read (blueprint_inputs.go).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -59,6 +60,37 @@ describe("the mocks' VM item drafts", () => {
     });
 
     await save(def);
+    expect((await publish()).published_version).toBeDefined();
+  });
+
+  it("take a number for a binding as its constant, and refuse a list or an input the form hasn't, at the field", async () => {
+    const { def, save, publish } = await newVmItem("bound-vm");
+    const bp = def.blueprint as Record<string, unknown>;
+
+    const list = await fields(save(withBlueprint(def, { ...bp, bindings: { vcpu: "2", memory_gb: [4] } })));
+    expect(list).toEqual({ status: 422, at: ["/definition/blueprint/bindings/memory_gb invalid"] });
+
+    const reads = {
+      ...bp,
+      bindings: { vcpu: "2", memory_gb: "4", network: "inputs.zone", folder: "inputs.cost_center" },
+      property_groups: [{ key: "corp_ops", version: 1 }],
+      components: [{ key: "web", count: "inputs.nodes" }],
+    };
+    expect(await fields(save(withBlueprint(def, reads)))).toEqual({
+      status: 422,
+      at: [
+        "/definition/blueprint/bindings/network unknown_input",
+        "/definition/blueprint/components/0/count unknown_input",
+      ],
+    });
+    const named = await save(withBlueprint(def, reads)).catch((e: { fieldErrors: S["FieldError"][] }) => e.fieldErrors);
+    expect(named).toContainEqual({
+      field: "/definition/blueprint/bindings/network",
+      code: "unknown_input",
+      message: 'This reads inputs.zone, and "zone" is not an input of the form\'s schema.',
+    });
+
+    await save(withBlueprint(def, { ...bp, bindings: { vcpu: 2, memory_gb: 4 } }));
     expect((await publish()).published_version).toBeDefined();
   });
 });

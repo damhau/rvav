@@ -36,7 +36,7 @@ type Blueprint struct {
 	Library      string                 `json:"library,omitempty"`
 	Guest        Guest                  `json:"guest,omitempty"`
 	Sizes        map[string]Size        `json:"sizes,omitempty"`
-	Bindings     map[string]string      `json:"bindings,omitempty"`
+	Bindings     Bindings               `json:"bindings,omitempty"`
 	AWXTemplates map[string]AWXTemplate `json:"awx_templates,omitempty"`
 	Disks        []Disk                 `json:"disks,omitempty"`
 	NICs         []NIC                  `json:"nics,omitempty"`
@@ -238,15 +238,15 @@ type Component struct {
 	Key   string `json:"key"`
 	Title string `json:"title,omitempty"`
 	// Count is a number or CEL over the inputs; 1 when absent.
-	Count    any               `json:"count,omitempty"`
-	Naming   string            `json:"naming,omitempty"`
-	Template string            `json:"template,omitempty"`
-	Library  string            `json:"library,omitempty"`
-	Guest    *Guest            `json:"guest,omitempty"`
-	Bindings map[string]string `json:"bindings,omitempty"`
-	Disks    []Disk            `json:"disks,omitempty"`
-	NICs     []NIC             `json:"nics,omitempty"`
-	Tags     []string          `json:"tags,omitempty"`
+	Count    any      `json:"count,omitempty"`
+	Naming   string   `json:"naming,omitempty"`
+	Template string   `json:"template,omitempty"`
+	Library  string   `json:"library,omitempty"`
+	Guest    *Guest   `json:"guest,omitempty"`
+	Bindings Bindings `json:"bindings,omitempty"`
+	Disks    []Disk   `json:"disks,omitempty"`
+	NICs     []NIC    `json:"nics,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 	// Constraints are its VMs' (ADR-0035).
 	Constraints *Constraints `json:"constraints,omitempty"`
 	// StoragePolicy is its VMs' storage policy, and Provisioning their

@@ -655,7 +655,15 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		fields = map[string]api.UiField{}
 	}
 	maps.Copy(fields, d.UiSchema.Fields)
-	return append(errs, checkBlueprint(itemType, d.Blueprint, fields, prefix+"/blueprint", publish)...)
+	inputs := map[string]bool{}
+	props, _ := d.FormSchema["properties"].(map[string]any)
+	for name := range props {
+		inputs[name] = true
+	}
+	for name := range groups {
+		inputs[name] = true
+	}
+	return append(errs, checkBlueprint(itemType, d.Blueprint, fields, inputs, prefix+"/blueprint", publish)...)
 }
 
 // checkFormDef checks a definition's form: its schema, layout, fields,
@@ -783,12 +791,13 @@ func checkValueSource(src api.ValueSource, ptr string, props map[string]any) []a
 }
 
 // checkBlueprint checks a definition's blueprint; fields are its form's,
-// its property groups' inputs among them.
-func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.UiField, ptr string, publish bool) []api.FieldError {
+// its property groups' inputs among them, and inputs the names of those
+// inputs.
+func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.UiField, inputs map[string]bool, ptr string, publish bool) []api.FieldError {
 	raw, _ := json.Marshal(bp)
 	b, err := blueprint.Parse(raw)
 	if err != nil {
-		return []api.FieldError{fieldErr(ptr, "invalid", err.Error())}
+		return []api.FieldError{parseProblem(bp, ptr, err)}
 	}
 	want := itemKinds[itemType]
 	if b.Kind != want {
@@ -798,6 +807,7 @@ func checkBlueprint(itemType string, bp map[string]any, fields map[string]api.Ui
 	switch b.Kind {
 	case blueprint.KindVM:
 		errs = append(errs, checkVMBlueprint(b, ptr, publish)...)
+		errs = append(errs, checkInputReads(b, inputs, ptr)...)
 		errs = append(errs, checkRemoteAccess(b, fields, ptr)...)
 		errs = append(errs, checkSecretFolders(b, fields, ptr)...)
 	case blueprint.KindWorkflow:
