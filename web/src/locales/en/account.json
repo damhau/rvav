@@ -57,6 +57,7 @@
     "everything": "Everything you may do",
     "making": "Creating…",
     "make": "Create token",
+    "nameFirst": "Say what it is for first.",
     "revoked": "Token revoked",
     "notRevoked": "Not revoked",
     "new": "New token",

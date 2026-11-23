@@ -1,7 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderApp } from "@/test/render";
+
+afterEach(() => vi.restoreAllMocks());
 
 async function openMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(await screen.findByRole("button", { name: `Actions for ${name}` }));
@@ -167,6 +169,17 @@ describe("A subscription's page", () => {
     await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await screen.findByText("Closes the change record.")).toBeInTheDocument();
+  });
+
+  it("shows a run's reason whole in a tooltip when it is cut", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(320);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(120);
+    renderApp("/admin/subscriptions/sub_servicenow");
+    const runs = await screen.findByRole("table", { name: "Runs" }, { timeout: 5000 });
+    const reason = await within(runs).findByText("HTTP 503 from servicenow.corp.example");
+    expect(reason).toHaveAttribute("tabindex", "0");
+    act(() => reason.focus());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("HTTP 503 from servicenow.corp.example");
   });
 
   it("goes back to the list once removed", async () => {

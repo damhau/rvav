@@ -240,6 +240,13 @@ describe("a deployment's VMs and what changed in vCenter", () => {
   const vmsOf = (name: string) =>
     db.deployments.find((d) => d.name === name)!.resources.filter((r) => r.type === "vsphere.vm");
 
+  it("keeps each number of a VM's size with its unit", async () => {
+    renderApp(`/deployments/${idOf("web-prd-front")}`);
+    const table = await screen.findByRole("table", { name: "Virtual machines" }, { timeout: 5000 });
+    const size = await within(table).findAllByText(/vCPU/);
+    expect(size[0]!.textContent).toMatch(/^\d+\u00a0vCPU · \d+\u00a0GB · \d+\u00a0GB$/);
+  });
+
   it("lists a multi-VM deployment's VMs under their component, each row with its actions", async () => {
     const user = userEvent.setup();
     const [first, second, third] = vmsOf("web-prd-front");

@@ -111,7 +111,7 @@ test("resource types and custom workflows, in French, and back to English withou
   await expect(sheet).toBeHidden();
 
   await open(page, "Workflows personnalisés");
-  await expect(page.getByRole("table", { name: "Workflows déclarés" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Workflows" })).toBeVisible();
   await bothThemes(page, "French custom workflows");
   await page.getByRole("button", { name: "Ajouter un workflow" }).first().click();
   const register = page.getByRole("dialog", { name: "Ajouter un workflow" });

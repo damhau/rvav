@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { Panel } from "@/components/ui/panel";
+import { Truncate } from "@/components/ui/truncate";
 import { Mono, Time } from "@/components/common/misc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -245,7 +246,7 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
       cell: (r) => (
         <>
           <RunStatus status={r.status} />
-          {r.reason && <div className="mt-0.5 max-w-sm truncate text-secondary text-muted">{r.reason}</div>}
+          {r.reason && <Truncate className="mt-0.5 max-w-sm text-secondary text-muted">{r.reason}</Truncate>}
         </>
       ),
     },

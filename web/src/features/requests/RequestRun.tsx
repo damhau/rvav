@@ -187,7 +187,7 @@ function RunDetails({
                 aria-pressed={logStep === s.id}
                 className="text-left text-secondary font-medium text-accent hover:underline"
               >
-                {t(logStep === s.id ? "run.showingOutput" : "run.showOutput", { title: s.title })}
+                {t("run.showOutput", { title: s.title })}
               </button>
             </li>
           ))}

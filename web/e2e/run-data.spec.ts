@@ -24,10 +24,10 @@ test("a run's data: the failed step's, then another's from the keyboard", async 
   await tabTo(page, page.getByRole("button", { name: "Show data of Backups · pgbackrest-stanza", exact: true }));
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("button", { name: "Showing data of Backups · pgbackrest-stanza", exact: true }),
+    page.getByRole("button", { name: "Show data of Backups · pgbackrest-stanza", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByRole("button", { name: "Showing data of Backups · pgbackrest-stanza", exact: true }),
+    page.getByRole("button", { name: "Show data of Backups · pgbackrest-stanza", exact: true }),
   ).toBeFocused();
   const outputs = data.getByRole("region", { name: "Outputs", exact: true });
   await expect(outputs).toContainText(/job_id\s*18235/);

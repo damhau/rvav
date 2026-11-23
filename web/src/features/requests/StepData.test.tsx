@@ -28,7 +28,7 @@ describe("a run's data (ADR-0057)", () => {
     const { run, data } = await openRun();
     fireEvent.click(within(run).getByRole("button", { name: /^AWX Backups/ }));
     const backups = screen.getByRole("region", { name: "Selected: Backups" });
-    const show = within(backups).getByRole("button", { name: "Showing data of Backups · pgbackrest-stanza" });
+    const show = within(backups).getByRole("button", { name: "Show data of Backups · pgbackrest-stanza" });
     expect(show).toHaveAttribute("aria-pressed", "true");
     const outputs = await within(data).findByRole("region", { name: "Outputs" });
     expect(outputs).toHaveTextContent("Later steps read them as steps.backups.<name>.");
@@ -37,10 +37,7 @@ describe("a run's data (ADR-0057)", () => {
 
     await user.click(screen.getByRole("button", { name: "Timeline" }));
     await user.click(screen.getByRole("button", { name: "Show data of Database nodes" }));
-    expect(screen.getByRole("button", { name: "Showing data of Database nodes" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByRole("button", { name: "Show data of Database nodes" })).toHaveAttribute("aria-pressed", "true");
     expect(await within(data).findByRole("region", { name: "Inputs" })).toHaveTextContent(
       "It was given nothing it keeps.",
     );

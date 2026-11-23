@@ -202,10 +202,12 @@ function VmTable({
       cell: ({ vm }) =>
         t("vms.sizeValue", {
           cpu: vm.cpu_count,
-          memory: formatSize(Math.round(vm.memory_mb / 1024), "GB"),
-          disk: formatSize(
-            vm.disks.reduce((n, d) => n + d.capacity_gb, 0),
-            "GB",
+          memory: unbroken(formatSize(Math.round(vm.memory_mb / 1024), "GB")),
+          disk: unbroken(
+            formatSize(
+              vm.disks.reduce((n, d) => n + d.capacity_gb, 0),
+              "GB",
+            ),
           ),
         }),
     },
@@ -407,6 +409,8 @@ function SecurityGroups({
 const verb = (action: string) => (action === "ALLOW" ? "allow" : action === "DROP" ? "drop" : "reject");
 
 /** A multi-VM deployment: its VMs belong to blueprint components (ADR-0024). */
+const unbroken = (s: string) => s.replaceAll(" ", "\u00a0");
+
 const isMulti = (vms: VmResource[]) => vms.some((v) => v.vm.component && v.vm.component !== "vm");
 
 /** The values of the VMs, each once, in order. */

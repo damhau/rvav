@@ -1,8 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
+
+afterEach(() => vi.restoreAllMocks());
 
 const deployment = (name: string) => db.deployments.find((d) => d.name === name)!;
 
@@ -101,6 +103,16 @@ describe("a deployment's remote access", () => {
     const box = await panel("web-prd-edge");
     expect(box).toHaveTextContent("Only the deployment's owner, Thomas Nguyen, can download its private key.");
     expect(within(box).queryByRole("button", { name: "Download the private key" })).toBeNull();
+  });
+
+  it("shows a cut fingerprint whole in a tooltip", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(320);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(120);
+    const box = await panel("web-prd-front");
+    const fingerprint = within(box).getByText(/^SHA256:/);
+    expect(fingerprint).toHaveAttribute("tabindex", "0");
+    act(() => fingerprint.focus());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(fingerprint.textContent);
   });
 
   it("shows the requester's key, without a download", async () => {

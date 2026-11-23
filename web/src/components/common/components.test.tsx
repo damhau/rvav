@@ -105,7 +105,29 @@ describe("Timeline", () => {
     );
     expect(screen.getByText("idm : join realm")).toHaveClass("text-bad");
     expect(screen.getByText("DNS discovery failed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show job output" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show job output" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("keeps the job output button's name while it shows the output", () => {
+    render(
+      <Timeline
+        steps={[
+          {
+            id: "j",
+            key: "awx.job",
+            title: "AWX job 1",
+            status: "done",
+            has_log: true,
+            children: [
+              { id: "t", key: "awx.task", title: "Gathering Facts", status: "done", children: [], has_log: false },
+            ],
+          },
+        ]}
+        onOpenLog={() => {}}
+        selectedLogStep="j"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Show job output" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("offers a step's data only where it has some, and says which step it shows", async () => {
@@ -137,6 +159,6 @@ describe("Timeline", () => {
         selectedDataStep="register"
       />,
     );
-    expect(screen.getByRole("button", { name: "Showing data of Register" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Show data of Register" })).toHaveAttribute("aria-pressed", "true");
   });
 });

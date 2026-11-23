@@ -161,10 +161,8 @@
     "running": "running",
     "until": "Until {{date}}",
     "showData": "Show data",
-    "showingData": "Showing data",
     "ofStep": " of {{step}}",
-    "showOutput": "Show job output",
-    "showingOutput": "Showing job output"
+    "showOutput": "Show job output"
   },
   "warnings": {
     "goOn": "You may go on: the request keeps the warning.",

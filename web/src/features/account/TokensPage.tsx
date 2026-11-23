@@ -82,9 +82,19 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
         <Checkbox id="token-inventory" checked={inventoryOnly} onChange={setInventoryOnly} />
         {t("tokens.inventoryOnly")}
       </label>
-      <Button type="submit" variant="primary" disabled={!name.trim() || make.isPending}>
+      <Button
+        type="submit"
+        variant="primary"
+        disabled={!name.trim() || make.isPending}
+        aria-describedby={name.trim() ? undefined : "token-why"}
+      >
         {t(make.isPending ? "tokens.making" : "tokens.make")}
       </Button>
+      {!name.trim() && (
+        <p id="token-why" className="pb-2 text-caption text-faint">
+          {t("tokens.nameFirst")}
+        </p>
+      )}
     </form>
   );
 }

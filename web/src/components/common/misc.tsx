@@ -30,6 +30,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@/lib/i18n";
 import { Tip } from "@/components/ui/tooltip";
+import { Truncate } from "@/components/ui/truncate";
 import type { CatalogItemType } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { fullDate, relative } from "@/lib/format";
@@ -109,7 +110,9 @@ export function CopyText({ value, className }: { value: string; className?: stri
   const [done, setDone] = useState(false);
   return (
     <span className={cn("group inline-flex min-w-0 items-center gap-1", className)}>
-      <span className="truncate font-mono text-secondary">{value}</span>
+      <Truncate mono className="text-secondary">
+        {value}
+      </Truncate>
       <button
         type="button"
         aria-label={t("copy", { value })}

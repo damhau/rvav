@@ -155,7 +155,6 @@
     "timeline": "Timeline",
     "selected": "Selected: {{title}}",
     "nothingYet": "Nothing has run here yet.",
-    "showingOutput": "Showing the output of {{title}}",
     "showOutput": "Show the output of {{title}}"
   },
   "list": {

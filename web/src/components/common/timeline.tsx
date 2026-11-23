@@ -146,7 +146,7 @@ export function Timeline({
                   aria-pressed={selectedDataStep === s.id}
                   className="self-start text-secondary font-medium text-accent hover:underline"
                 >
-                  {t(selectedDataStep === s.id ? "step.showingData" : "step.showData")}
+                  {t("step.showData")}
                   <span className="sr-only">{t("step.ofStep", { step: stepTitle(s) })}</span>
                 </button>
               )}
@@ -181,7 +181,7 @@ export function Timeline({
                       aria-pressed={selectedLogStep === s.id}
                       className="mt-2 text-secondary font-medium text-accent hover:underline"
                     >
-                      {t(selectedLogStep === s.id ? "step.showingOutput" : "step.showOutput")}
+                      {t("step.showOutput")}
                     </button>
                   )}
                 </div>

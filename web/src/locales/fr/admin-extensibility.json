@@ -298,7 +298,7 @@
       "running": "En cours"
     },
     "lead": "Des workflows Temporal écrits par vos équipes et exécutés par leurs propres workers\u00a0; rvav les lance, affiche leurs étapes et demande leurs approbations.",
-    "registered": "Workflows déclarés",
+    "registered": "Workflows",
     "none": "Aucun workflow personnalisé pour l'instant",
     "noneBody": "Ajoutez-en un pour le proposer dans le catalogue, sur les déploiements ou aux abonnements.",
     "remove": {

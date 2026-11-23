@@ -51,6 +51,18 @@ describe("API tokens", () => {
     expect(within(table).getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
   });
 
+  it("says why Create token is off until the token says what it is for", async () => {
+    const u = userEvent.setup();
+    serve([]);
+    renderApp("/tokens");
+    const create = await screen.findByRole("button", { name: "Create token" }, { timeout: 5000 });
+    expect(create).toBeDisabled();
+    expect(create).toHaveAccessibleDescription("Say what it is for first.");
+    await u.type(screen.getByRole("textbox", { name: "What it is for" }), "Backups");
+    expect(create).toBeEnabled();
+    expect(create).not.toHaveAccessibleDescription();
+  });
+
   it("revokes a token from its row once asked, leaving the list's empty state", async () => {
     const u = userEvent.setup();
     renderApp("/tokens");

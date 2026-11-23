@@ -162,7 +162,6 @@
     "timeline": "Chronologie",
     "selected": "Sélectionné\u00a0: {{title}}",
     "nothingYet": "Rien ne s'est encore exécuté ici.",
-    "showingOutput": "Sortie de {{title}} affichée",
     "showOutput": "Afficher la sortie de {{title}}"
   },
   "list": {

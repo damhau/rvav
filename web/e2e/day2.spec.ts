@@ -170,7 +170,7 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   // A disk added, then removed; the boot disk isn't offered.
   await page.goto("/deployments");
   await page.getByRole("link", { name: "web-dev-legacy", exact: true }).click();
-  await expect(page.getByText(/· 320 GB$/)).toBeVisible();
+  await expect(page.getByText(/· 320\sGB$/)).toBeVisible();
   const legacy = page.getByRole("button", { name: "More actions for web-dev-legacy001" });
   await legacy.click();
   await page.getByRole("menuitem", { name: /^Add a disk/ }).click();
@@ -179,7 +179,7 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   await page.getByRole("option", { name: /^nfs-gva-bronze-01/ }).click();
   await add.getByRole("button", { name: "Add a disk" }).click();
   await expect(add).toBeHidden();
-  await expect(page.getByText(/· 370 GB$/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/· 370\sGB$/)).toBeVisible({ timeout: 15_000 });
 
   await legacy.click();
   await page.getByRole("menuitem", { name: /^Remove a disk/ }).click();
@@ -192,7 +192,7 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   await third.click();
   await remove.getByRole("button", { name: "Remove a disk" }).click();
   await expect(remove).toBeHidden();
-  await expect(page.getByText(/· 320 GB$/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/· 320\sGB$/)).toBeVisible({ timeout: 15_000 });
   expect(errors).toEqual([]);
 });
 

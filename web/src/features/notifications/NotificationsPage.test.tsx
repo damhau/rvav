@@ -80,7 +80,7 @@ describe("notification preferences", () => {
         .map((h) => h.textContent),
     ).toEqual(["When", "App", "Email", "Teams", "Slack"]);
     const row = within(table).getByRole("row", { name: /^Request submitted/ });
-    expect(row).toHaveTextContent(/^Request submitteddefault/);
+    expect(row).toHaveTextContent(/^Request submitted default/);
     expect(within(row).getByRole("checkbox", { name: "Request submitted in the app" })).toBeDisabled();
     expect(within(row).getByRole("checkbox", { name: "Request submitted by Teams" })).toBeDisabled();
     await user.click(within(row).getByRole("checkbox", { name: "Request submitted by Email" }));

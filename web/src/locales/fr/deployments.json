@@ -250,7 +250,7 @@
       "suspended": "suspendue"
     },
     "waitingForIp": "en attente d'IP",
-    "sizeValue": "{{cpu}} vCPU · {{memory}} · {{disk}}",
+    "sizeValue": "{{cpu}}\u00a0vCPU · {{memory}} · {{disk}}",
     "mem": "Mém",
     "power": "Alimentation",
     "powerLabel": "{{action}} {{name}}",

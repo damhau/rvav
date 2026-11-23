@@ -71,7 +71,7 @@ describe("Administration pages for who reads them alone", () => {
   it("Custom workflows shows its list", async () => {
     holding("extensibility.read");
     renderApp("/admin/workflows");
-    const region = await screen.findByRole("region", { name: "Registered workflows" });
+    const region = await screen.findByRole("region", { name: "Workflows" });
     expect(await within(region).findAllByRole("row")).not.toHaveLength(0);
     expect(screen.queryByRole("alert")).toBeNull();
   });

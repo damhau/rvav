@@ -162,10 +162,8 @@
     "running": "en cours",
     "until": "Jusqu'au {{date}}",
     "showData": "Afficher les données",
-    "showingData": "Données affichées",
     "ofStep": " de {{step}}",
-    "showOutput": "Afficher la sortie du job",
-    "showingOutput": "Sortie du job affichée"
+    "showOutput": "Afficher la sortie du job"
   },
   "warnings": {
     "goOn": "Vous pouvez continuer\u00a0: la demande garde l'avertissement.",

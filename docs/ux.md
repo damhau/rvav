@@ -224,6 +224,9 @@ sentence case.
   as "Waits for the change running" or "It comes first already". An action
   that needs a selection appears with the selection, in a bar above the
   table.
+- **A toggle keeps its name.** A button that shows or hides something,
+  such as **Show job output**, says whether it shows with `aria-pressed`,
+  not by changing its words.
 - **Failures offer a retry.** A list, a panel or a menu that couldn't load
   says so and offers **Try again**. A check run again that fails shows
   only its error, not the result before it.

@@ -213,7 +213,10 @@ function Preferences() {
         <>
           <span className="font-medium">{kindLabel(r.kind).label}</span>
           {!differs(r.kind, rules[r.kind] ?? []) && (
-            <span className="ml-2 text-caption text-faint">{t("prefs.default")}</span>
+            <>
+              {" "}
+              <span className="ml-1 text-caption text-faint">{t("prefs.default")}</span>
+            </>
           )}
           <div className="text-secondary text-muted">{kindLabel(r.kind).hint}</div>
           <FieldNote id={`notif-${r.kind}-note`} error={errors[r.kind]} />

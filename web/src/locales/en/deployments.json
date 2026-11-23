@@ -238,7 +238,7 @@
       "suspended": "suspended"
     },
     "waitingForIp": "waiting for IP",
-    "sizeValue": "{{cpu}} vCPU · {{memory}} · {{disk}}",
+    "sizeValue": "{{cpu}}\u00a0vCPU · {{memory}} · {{disk}}",
     "mem": "Mem",
     "power": "Power",
     "powerLabel": "{{action}} {{name}}",
