@@ -53,11 +53,16 @@ func targetNameSQL(typ, id string) string {
 // type rvav doesn't keep as a record of its own, or no target at all, as a
 // failed sign-in by nobody known has.
 func auditTargetKept() string {
+	return "case when a.target_type in (" + auditTargetTypes() + ") and a.target_id <> '' then t.live is not null end"
+}
+
+// auditTargetTypes lists the types in auditTargets, as SQL literals.
+func auditTargetTypes() string {
 	types := make([]string, len(auditTargets))
 	for i, t := range auditTargets {
 		types[i] = "'" + t.typ + "'"
 	}
-	return "case when a.target_type in (" + strings.Join(types, ", ") + ") and a.target_id <> '' then t.live is not null end"
+	return strings.Join(types, ", ")
 }
 
 // auditRowColumns are the columns of an AuditRow, from audit_events a with
@@ -74,7 +79,11 @@ var auditRowJoins = `left join users u on u.id = a.actor_id left join projects p
 
 // auditNameAtWrite is the name a new event's target gets: the one the
 // caller gives ($8), else the target's own, else the one the last event on
-// it recorded, for a target deleted before its event is written.
+// it recorded, for a target deleted before its event is written. Only a
+// record rvav names has such events: a failed sign-in by nobody known, a
+// user with no ID, has none, and looking would read every one of them, as
+// many as a flood of them leaves.
 var auditNameAtWrite = `coalesce(nullif($8, ''), ` + targetNameSQL("$3", "$4") + `,
+	case when $4 <> '' and $3 in (` + auditTargetTypes() + `) then
 	(select o.target_name from audit_events o where o.target_type = $3 and o.target_id = $4 and o.target_name is not null
-	 order by o.id desc limit 1))`
+	 order by o.id desc limit 1) end)`

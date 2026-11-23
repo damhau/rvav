@@ -18,7 +18,34 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auditlog"
+	"github.com/damhau/rvav/internal/store"
 )
+
+// auditRowsRead writes the event in a transaction rolled back after, and
+// counts the audit_events rows the write read, by scan or by index. The
+// connection's counts may still hold earlier transactions' that it hasn't
+// reported yet, so it counts the difference.
+func auditRowsRead(t *testing.T, h *harness, e store.AuditEvent) int64 {
+	t.Helper()
+	tx, err := h.store.Pool.Begin(h.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(h.ctx) }()
+	read := func() int64 {
+		var n int64
+		if err := tx.QueryRow(h.ctx, `select coalesce(seq_tup_read, 0) + coalesce(idx_tup_fetch, 0)
+			from pg_stat_xact_user_tables where relname = 'audit_events'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := read()
+	if err := h.store.Audit(h.ctx, tx, e); err != nil {
+		t.Fatal(err)
+	}
+	return read() - before
+}
 
 // TestAuditTargetNames: an audit event names its target as it was called
 // when the event was recorded, says whether rvav still keeps it, and keeps
@@ -146,6 +173,19 @@ func TestAuditTargetNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		check("role.legacy", "names-legacy", "Legacy role", true)
+
+		// A failed sign-in by nobody known has no target to name: writing
+		// one reads none of the earlier ones, however many a flood left.
+		if _, err := h.store.Pool.Exec(ctx, `insert into audit_events (action, target_type, target_id)
+			select 'auth.sign_in_failed', 'user', '' from generate_series(1, 500)`); err != nil {
+			t.Fatal(err)
+		}
+		if read := auditRowsRead(t, h, store.AuditEvent{Action: "auth.sign_in_failed", TargetType: "user"}); read > 10 {
+			t.Fatalf("a failed sign-in by nobody known read %d audit rows", read)
+		}
+		if read := auditRowsRead(t, h, store.AuditEvent{Action: "role.update", TargetType: "role", TargetID: "names-operator"}); read == 0 {
+			t.Fatal("a deleted role's name read no earlier event")
+		}
 
 		// The CSV export ends each row with the target's name.
 		code, body, _ := h.do("GET", "/api/v1/audit?format=csv&q=names-operator", admin, nil)
