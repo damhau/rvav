@@ -1452,6 +1452,8 @@ export const handlers = [
     if (seen) return json(seen.response, { status: seen.status });
     const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
     if (!dep) return notFound("Deployment");
+    const refused = faults.updateRefused();
+    if (refused) return problem(422, "validation", "Some values need fixing", undefined, refused);
     return submitted(key, raw, runUpdate(db, dep, JSON.parse(raw) as S["UpdateDraft"], newRequestNumber()));
   }),
 

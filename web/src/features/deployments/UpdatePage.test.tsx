@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { DeploymentDetail, RequestForm, UiField } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
+import { faults } from "@/mocks/faults";
 import { limitState } from "@/mocks/limits";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -204,6 +205,31 @@ describe("the update page against the mock API", () => {
     await waitFor(() => expect(version()).toHaveFocus());
     expect(screen.getByRole("radio", { name: /^X-Large/ })).toBeChecked();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  }, 20_000);
+
+  it("keeps the focus on the field a refusal after the confirmation names, not on Review", async () => {
+    faults.refuseNextUpdate([
+      { field: "/inputs/size", code: "invalid", message: "X-Large is no longer offered in tst." },
+    ]);
+    const user = userEvent.setup();
+    renderApp(`/deployments/${named("web-tst-search").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    await user.click(await screen.findByRole("radio", { name: /^X-Large/ }));
+    await within(summary).findByRole("list", { name: "Changes" }, { timeout: 5000 });
+    const review = within(summary).getByRole("button", { name: "Review the update" });
+    review.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("alertdialog", { name: "Update web-tst-search?" });
+    within(dialog).getByRole("button", { name: "Update" }).focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    const size = document.querySelector<HTMLElement>('[data-field="size"]')!;
+    expect(size).toHaveTextContent("X-Large is no longer offered in tst.");
+    await waitFor(() => expect(size).toContainElement(document.activeElement as HTMLElement));
+    // The dialog gives the focus back a moment after it closes.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(size).toContainElement(document.activeElement as HTMLElement);
+    expect(review).not.toHaveFocus();
   }, 20_000);
 
   it("holds a deployment to the size limits only where the update grows it", async () => {

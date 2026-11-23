@@ -292,12 +292,19 @@ routes.
   `useOpener` in its `onCloseAutoFocus`. A dialog that asks for a value
   focuses it on open (`onOpenAutoFocus`) rather than **Close**.
 - A refused save or action moves the focus to the first input it's about,
-  whose note then reads out the problem. `Sheet` and the forms that save
-  in place (Branding, a notification template) use `useSaveFocus`, the
-  day-2 action dialog `focusInvalid` (`components/ui/opener.ts`); the
-  request and Update forms move it themselves, Version included. A
-  problem with no input of its own shows in an alert at the end of the
-  form.
+  once that input is marked, so its note reads out the problem with it.
+  `Sheet` and the forms that save in place (Branding, a notification
+  template, the identity provider, an integration's settings and its
+  inventory token, a project's and a catalog item's details, the
+  notification preferences, the answer to a step that waits for a person)
+  use `useSaveFocus`, a sheet with a footer of its own (a vCenter, an NSX
+  Manager) too; the day-2 action dialog uses `focusInvalid`
+  (`components/ui/opener.ts`). A group of checkboxes or radios a problem
+  names is marked `aria-invalid` itself, and the focus goes to its first
+  control. The request and Update forms move it themselves, Version
+  included; refused once confirmed, the Update's dialog leaves it there
+  (`returnFocus`) rather than giving it back to **Review**. A problem with
+  no input of its own shows in an alert at the end of the form.
 - The focus never falls to the page. A `Button` that turns disabled while
   it has the focus, such as a submit button while its save runs, keeps
   it: it says `aria-disabled` and ignores presses until the focus

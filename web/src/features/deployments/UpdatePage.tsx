@@ -295,6 +295,8 @@ function UpdateBody({
   const formRef = useRef<FormHandle>(null);
   const attentionRef = useRef<HTMLDivElement>(null);
   const blockedRef = useRef<HTMLDivElement>(null);
+  // The confirmation's update was refused: as the dialog closes, the focus stays on what to fix.
+  const refused = useRef(false);
   const fields = form.ui_schema.fields;
   useFocusVersion(focusVersion, formRef);
   // The inputs changed here: another version's form starts from its own values, then these.
@@ -380,6 +382,7 @@ function UpdateBody({
       setConfirm(null);
       setSubmitted(true);
       if (isApiError(e) && e.status === 422) {
+        refused.current = true;
         const mapped = mapFieldErrors(e.fieldErrors);
         if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
           mapped.form.push(e.problem.detail ?? e.problem.title);
@@ -466,6 +469,7 @@ function UpdateBody({
       return;
     }
     setBlocked(null);
+    refused.current = false;
     setConfirm({
       preview: checked,
       body: {
@@ -583,6 +587,7 @@ function UpdateBody({
           pending={submit.isPending}
           onCancel={() => setConfirm(null)}
           onConfirm={() => submit.mutate(confirm.body)}
+          returnFocus={() => (refused.current ? (focusedNow() ?? attentionRef.current) : null)}
         />
       )}
     </div>
@@ -597,6 +602,7 @@ function ConfirmUpdate({
   pending,
   onCancel,
   onConfirm,
+  returnFocus,
 }: {
   name: string;
   preview: UpdatePreview;
@@ -605,6 +611,7 @@ function ConfirmUpdate({
   pending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  returnFocus?: () => HTMLElement | null | undefined;
 }) {
   const { t } = useTranslation("deployments");
   const destructive = p.changes.filter((c) => c.destructive);
@@ -650,8 +657,15 @@ function ConfirmUpdate({
       tone={destructive.length ? "danger" : "primary"}
       pending={pending}
       onConfirm={onConfirm}
+      returnFocus={returnFocus}
     />
   );
+}
+
+/** What has the focus, unless it fell to the page. */
+function focusedNow(): HTMLElement | null {
+  const el = document.activeElement;
+  return el instanceof HTMLElement && el !== document.body ? el : null;
 }
 
 export function UpdatePage({ deploymentId }: { deploymentId: string }) {
