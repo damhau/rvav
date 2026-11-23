@@ -151,7 +151,7 @@
       "actions": "Actions",
       "actionsHint": "Séparées par des virgules, * pour toutes, par exemple {{example}}",
       "roles": "Rôles",
-      "rolesHint": "{{roles}}\u00a0; vide pour n'importe qui",
+      "rolesHint": "La politique vaut pour quiconque détient l'un de ces rôles sur le déploiement, ou pour n'importe qui si aucun n'est coché.",
       "conditionHint": "Par exemple {{example}}",
       "reason": "Raison que voient les personnes",
       "projectHint": "Une politique de tous les projets stricte et plus sévère l'emporte toujours sur celle d'un projet.",

@@ -633,6 +633,15 @@ function levelUsers(db: Db, levels: S["ApprovalLevel"][]): S["UserRef"][] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+const day2BuiltinRoles = ["viewer", "member", "project-admin", "supervisor", "admin"];
+
+/** As the server's Day2PolicyRoles: the owner, the built-in roles day-2 policies name, then the custom roles by name. */
+function day2PolicyRoles(db: Db): S["RoleRef"][] {
+  const builtin = day2BuiltinRoles.flatMap((k) => builtinRoles.filter((r) => r.key === k));
+  const custom = [...customRoles(db)].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
+  return [{ key: "owner", name: "Owner" }, ...builtin, ...custom].map((r) => ({ key: r.key, name: r.name }));
+}
+
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
   return HttpResponse.json(
     {
@@ -2345,6 +2354,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           return HttpResponse.json({
             items,
             level_roles: levelRoles.map((r) => ({ key: r.key, name: r.name })),
+            ...(kind === "day2" && { policy_roles: day2PolicyRoles(db) }),
             users: levelUsers(
               db,
               items.flatMap((x) => x.levels ?? []),

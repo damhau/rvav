@@ -13396,7 +13396,7 @@ components:
                 (ADR-0045). False for a project admin's own.
     Day2PolicyList:
       type: object
-      required: [items, level_roles, users]
+      required: [items, level_roles, policy_roles, users]
       properties:
         items:
           type: array
@@ -13404,6 +13404,13 @@ components:
         level_roles:
           type: array
           description: The roles a level may name, those given in projects.
+          items: { $ref: "#/components/schemas/RoleRef" }
+        policy_roles:
+          type: array
+          description: |
+            The roles a policy's `roles` may name, with their names: the
+            deployment's owner (`owner`), the built-in roles a day-2 action
+            is given to, then the custom roles.
           items: { $ref: "#/components/schemas/RoleRef" }
         users:
           type: array

@@ -57,9 +57,12 @@ func (s *Server) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, id
 
 func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.Day2Policies(r.Context(), principal(r))
-	var roles []api.RoleRef
+	var roles, policyRoles []api.RoleRef
 	if err == nil {
 		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
+	}
+	if err == nil {
+		policyRoles, err = s.Core.Day2PolicyRoles(r.Context(), principal(r))
 	}
 	var levels []api.ApprovalLevel
 	for _, p := range items {
@@ -71,7 +74,7 @@ func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		users, err = s.Core.LevelUsers(r.Context(), levels)
 	}
-	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items, LevelRoles: roles, Users: users}, err)
+	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items, LevelRoles: roles, PolicyRoles: policyRoles, Users: users}, err)
 }
 
 func (s *Server) CreateDay2Policy(w http.ResponseWriter, r *http.Request) {

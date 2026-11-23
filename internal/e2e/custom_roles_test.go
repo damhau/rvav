@@ -67,6 +67,11 @@ func TestCustomRoles(t *testing.T) {
 			Reason: new("Ask the owner.")}, 201, &deny)
 		h.json("POST", "/api/v1/admin/day2-policies", admin, api.Day2PolicyWrite{Name: "x", Roles: &[]string{"auditor"},
 			Effect: api.Day2PolicyWriteEffectAllow}, 422, nil)
+		var day2 api.Day2PolicyList
+		h.json("GET", "/api/v1/admin/day2-policies", admin, nil, 200, &day2)
+		if !slices.Contains(day2.PolicyRoles, api.RoleRef{Key: "vm-operator", Name: "VM operator"}) {
+			t.Fatalf("the roles a day-2 policy may name = %+v", day2.PolicyRoles)
+		}
 		if r := d.actions(operator)["power_off"]; r.Enabled || deref(r.DisabledReason) != "Ask the owner." {
 			t.Fatalf("power_off under a policy denying it = %+v", r)
 		}

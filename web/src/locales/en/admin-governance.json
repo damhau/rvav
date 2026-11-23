@@ -151,7 +151,7 @@
       "actions": "Actions",
       "actionsHint": "Comma-separated, * for all, for example {{example}}",
       "roles": "Roles",
-      "rolesHint": "{{roles}}; empty for anyone",
+      "rolesHint": "The policy applies to whoever holds one of these roles on the deployment, or to anyone when none is ticked.",
       "conditionHint": "For example {{example}}",
       "reason": "Reason people see",
       "projectHint": "A policy of every project that is hard and stricter still wins over a project's own.",

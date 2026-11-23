@@ -1145,7 +1145,7 @@ and an environment, which policies would apply to a request and why.
 |---|---|
 | **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, how the request was made, and what an update changes (see [Updates](#updates)). |
 | **Lease** | Default and longest leases per environment or project, extensions, the lifetime, the end (power off then delete, delete, or only tell the owner), and the enforcement. Lease rules give another lease to the deployments a condition matches (see [Lease rules and lifetime](#lease-rules-and-lifetime)). |
-| **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. |
+| **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. You tick **Roles** by name: **Owner** for the deployment's owner, the built-in roles a day-2 action is given to, and the custom roles. With none ticked, the policy applies to anyone. |
 | **Limits** | How many deployments each user or each project may have, and how much vCPU and memory each deployment may take (see [Deployment limits](#deployment-limits)). |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
 | **Quotas** | What all of rvav may hold, and what each user may hold across rvav (see [Quotas](#quotas)). |
@@ -1440,9 +1440,10 @@ approval, asks one or more of these
 - **An OIDC group** (`group`): its members, as their token says when they
   decide.
 - **Users** (`approvers`), by ID.
-- **Project roles** (`roles`), built-in or custom, by key: whoever holds
-  one in the request's project when the level opens, given it themselves
-  or through a group mapped to it there. A role held for all of rvav
+- **Project roles** (`roles`), built-in or custom, ticked by name (the
+  API takes their keys): whoever holds one in the request's project when
+  the level opens, given it themselves or through a group mapped to it
+  there. A role held for all of rvav
   doesn't count. One policy can then ask every project's supervisors.
 - **The requester's manager** (`manager: true`): the user the
   requester's manager claim names, by email or subject, as rvav stored it
@@ -1454,7 +1455,13 @@ approval, asks one or more of these
 given for all of rvav only, such as `auditor`, or no role at all, isn't
 saved.
 
-This list and `GET /api/v1/admin/day2-policies` also return `users`: the
+`GET /api/v1/admin/day2-policies` also lists, in `policy_roles`, the roles
+a day-2 policy's `roles` may name, by key and name: `owner` (the
+deployment's owner), the built-in roles `viewer`, `member`,
+`project-admin`, `supervisor` and `admin`, then the custom roles. Its side
+panel ticks them by name, and its list names them.
+
+Both lists also return `users`: the
 users their levels ask, as approvers or to escalate to, by ID and name,
 without email. A project admin gets the names on the policies they read,
 the global ones and their projects'. A user rvav doesn't know isn't in

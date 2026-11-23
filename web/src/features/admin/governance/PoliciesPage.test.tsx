@@ -51,6 +51,35 @@ describe("Policies", () => {
     await waitFor(() => expect(rows(region)[2]).toMatch(/^Administrators/));
   });
 
+  it("names the roles a day-2 policy is for, and ticks them by name", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=day2");
+    const region = await screen.findByRole("region", { name: "Day-2 policies" });
+    const members = await within(region).findByRole("row", { name: /Members operate their VMs/ });
+    expect(members).toHaveTextContent(/Owner, Member,? or Project admin/);
+    expect(members).not.toHaveTextContent("project-admin");
+
+    await user.click(within(region).getByRole("button", { name: "New day-2 policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New day-2 policy" });
+    const roles = within(sheet).getByRole("group", { name: "Roles" });
+    expect(roles).toHaveAccessibleDescription(
+      "The policy applies to whoever holds one of these roles on the deployment, or to anyone when none is ticked.",
+    );
+    for (const name of ["Owner", "Viewer", "Member", "Project admin", "Supervisor", "Administrator"])
+      expect(within(roles).getByRole("checkbox", { name })).not.toBeChecked();
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Owners and supervisors");
+    await user.click(within(roles).getByRole("checkbox", { name: "Owner" }));
+    await user.click(within(roles).getByRole("checkbox", { name: "Supervisor" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
+    expect(await screen.findByText("Owners and supervisors saved")).toBeInTheDocument();
+    expect(adminState(db).day2.find((p) => p.name === "Owners and supervisors")).toMatchObject({
+      roles: ["owner", "supervisor"],
+    });
+    expect(await within(region).findByRole("row", { name: /Owners and supervisors/ })).toHaveTextContent(
+      "Owner or Supervisor",
+    );
+  });
+
   it("removes an approval policy after saying what changes", async () => {
     const user = userEvent.setup();
     renderApp("/admin/policies");

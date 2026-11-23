@@ -293,7 +293,54 @@ export function askedText(l: ApprovalLevel, roles: RoleRef[], users: UserRef[]):
   return parts.length ? parts.join(", ") : l.name;
 }
 
-const roleId = (level: number, role: string) => `level-${level}-role-${role}`;
+/**
+ * Roles to tick, by name, in a group named `legend`: `roles` and any key in
+ * `picked` they don't have. An error marks the first one, so a refused save
+ * moves the focus there.
+ */
+export function RoleChecks({
+  id,
+  legend,
+  roles,
+  picked,
+  onChange,
+  hint,
+  error,
+}: {
+  id: string;
+  legend: string;
+  roles: RoleRef[];
+  picked: string[];
+  onChange: (picked: string[]) => void;
+  hint: string;
+  error?: string;
+}) {
+  const shown = [...roles, ...picked.filter((k) => !roles.some((r) => r.key === k)).map((k) => ({ key: k, name: k }))];
+  const note = `${id}-note`;
+  return (
+    <fieldset className="flex flex-col gap-1" aria-describedby={note}>
+      <legend className="mb-1 text-secondary font-medium text-fg">{legend}</legend>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {shown.map((r, i) => (
+          <div key={r.key} className="flex items-center gap-1.5">
+            <Checkbox
+              id={`${id}-${r.key}`}
+              checked={picked.includes(r.key)}
+              aria-invalid={error && i === 0 ? true : undefined}
+              aria-describedby={error ? note : undefined}
+              onChange={(on) => onChange(on ? [...picked, r.key] : picked.filter((k) => k !== r.key))}
+            />
+            <label htmlFor={`${id}-${r.key}`} className="text-body">
+              {roleName(r)}
+            </label>
+          </div>
+        ))}
+      </div>
+      <FieldNote id={note} error={error} hint={hint} />
+    </fieldset>
+  );
+}
+
 // A Go duration, the same in every language.
 const timeoutExample = "48h";
 
@@ -312,32 +359,17 @@ function LevelAsks({
   set: (l: ApprovalLevel) => void;
 }) {
   const { t } = useTranslation("admin-governance");
-  const picked = l.roles ?? [];
-  const shown = [...roles, ...picked.filter((k) => !roles.some((r) => r.key === k)).map((k) => ({ key: k, name: k }))];
-  const error = errorAt(errors, `/levels/${i}/roles`);
-  const toggle = (key: string, on: boolean) => {
-    const next = on ? [...picked, key] : picked.filter((k) => k !== key);
-    set({ ...l, roles: next.length ? next : undefined });
-  };
   return (
     <div className="flex flex-col gap-3 pr-9">
-      <fieldset className="flex flex-col gap-1" aria-describedby={`level-${i}-roles-note`}>
-        <legend className="mb-1 text-secondary font-medium text-fg">{t("policies.levels.roles")}</legend>
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {shown.map((r) => {
-            const id = roleId(i, r.key);
-            return (
-              <div key={r.key} className="flex items-center gap-1.5">
-                <Checkbox id={id} checked={picked.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
-                <label htmlFor={id} className="text-body">
-                  {r.name}
-                </label>
-              </div>
-            );
-          })}
-        </div>
-        <FieldNote id={`level-${i}-roles-note`} error={error} hint={t("policies.levels.rolesHint")} />
-      </fieldset>
+      <RoleChecks
+        id={`level-${i}-role`}
+        legend={t("policies.levels.roles")}
+        roles={roles}
+        picked={l.roles ?? []}
+        onChange={(picked) => set({ ...l, roles: picked.length ? picked : undefined })}
+        hint={t("policies.levels.rolesHint")}
+        error={errorAt(errors, `/levels/${i}/roles`)}
+      />
       <div className="flex items-start gap-2">
         <Checkbox
           id={`level-${i}-manager`}

@@ -64,7 +64,8 @@ test("an approval level asks project roles and the requester's manager", async (
   await press(page, day2.getByRole("button", { name: "Actions for Deleting in production" }));
   await page.getByRole("menuitem", { name: "Change" }).press("Enter");
   const d2 = page.getByRole("dialog", { name: "Change Deleting in production" });
-  await press(page, d2.getByRole("checkbox", { name: "Project admin", exact: true }), "Space");
+  const asked = d2.getByRole("group", { name: "Project roles" });
+  await press(page, asked.getByRole("checkbox", { name: "Project admin", exact: true }), "Space");
   await press(page, d2.getByRole("button", { name: "Save policy" }));
   await expect(page.getByText("Deleting in production saved")).toBeVisible();
 });

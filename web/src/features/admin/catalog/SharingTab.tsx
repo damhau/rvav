@@ -30,6 +30,7 @@ import type {
 import { formatList } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
+import { roleName } from "@/lib/i18n/names";
 import { keys } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
@@ -492,7 +493,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
                     }}
                   />
                   <label htmlFor={`share-role-${r.key}`} className="text-body">
-                    {r.name}
+                    {roleName(r)}
                   </label>
                 </div>
               ))}
@@ -604,7 +605,7 @@ function Requesters({
     [
       p.named ? t("sharing.why.named") : "",
       ...p.groups.map((g) => t("sharing.why.in", { group: g })),
-      ...p.roles.map((x) => x.name),
+      ...p.roles.map(roleName),
       chosen && p.everywhere ? t("sharing.why.everywhere") : "",
     ]
       .filter(Boolean)

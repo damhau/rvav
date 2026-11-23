@@ -10254,6 +10254,12 @@ export interface components {
             /** @description The roles a level may name, those given in projects. */
             level_roles: components["schemas"]["RoleRef"][];
             /**
+             * @description The roles a policy's `roles` may name, with their names: the
+             *     deployment's owner (`owner`), the built-in roles a day-2 action
+             *     is given to, then the custom roles.
+             */
+            policy_roles: components["schemas"]["RoleRef"][];
+            /**
              * @description The users the listed levels name, as approvers or to escalate
              *     to, by ID with their names (no email). An ID no user has is
              *     left out.

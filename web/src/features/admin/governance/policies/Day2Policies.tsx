@@ -16,6 +16,8 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { formatList } from "@/lib/format";
+import { roleName } from "@/lib/i18n/names";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors, priorityOf, writable } from "../common";
 import {
@@ -25,6 +27,7 @@ import {
   movesEveryone,
   OrderedMenu,
   PriorityDialog,
+  RoleChecks,
   SetByAdmin,
   useOrderedPolicies,
   useProjects,
@@ -63,14 +66,12 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
   );
   const [priority, setPriority] = useState(String(f.priority));
   const [actions, setActions] = useState((f.actions ?? []).join(", "));
-  const [roles, setRoles] = useState((f.roles ?? []).join(", "));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => {
       const body = {
         ...f,
         actions: list(actions),
-        roles: list(roles),
         levels: f.effect === "approval" ? f.levels : [],
         enforcement: f.effect === "allow" ? undefined : (f.enforcement ?? "hard"),
         priority: priorityOf(priority),
@@ -160,19 +161,15 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
           onChange={(e) => setActions(e.target.value)}
         />
       </Field>
-      <Field
-        label={t("policies.day2.roles")}
-        htmlFor="d2-roles"
+      <RoleChecks
+        id="d2-role"
+        legend={t("policies.day2.roles")}
+        roles={listed.data?.policy_roles ?? []}
+        picked={f.roles ?? []}
+        onChange={(roles) => setF({ ...f, roles })}
+        hint={t("policies.day2.rolesHint")}
         error={errorAt(errors, "/roles")}
-        hint={t("policies.day2.rolesHint", { roles: "owner, member, project-admin, supervisor, admin" })}
-      >
-        <Input
-          id="d2-roles"
-          className="font-mono text-secondary"
-          value={roles}
-          onChange={(e) => setRoles(e.target.value)}
-        />
-      </Field>
+      />
       <Field
         label={t("policies.appliesWhenCel")}
         htmlFor="d2-condition"
@@ -237,6 +234,10 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
     onError: (e) => failed(e, t("policies.notRemoved")),
   });
   const items = policies.data ? [...policies.data.items].sort((a, b) => a.priority - b.priority) : undefined;
+  const roleOf = (key: string) => {
+    const r = policies.data?.policy_roles.find((x) => x.key === key);
+    return r ? roleName(r) : key;
+  };
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
       {t("policies.day2.new")}
@@ -271,7 +272,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
       header: t("policies.day2.whoAndWhen"),
       cell: (p) => (
         <span className="text-secondary">
-          {(p.roles ?? []).length ? (p.roles ?? []).join(", ") : t("policies.day2.anyone")}
+          {p.roles?.length ? formatList(p.roles.map(roleOf), "disjunction") : t("policies.day2.anyone")}
           {p.condition !== "true" && <span className="block font-mono text-muted">{p.condition}</span>}
         </span>
       ),

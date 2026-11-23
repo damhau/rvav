@@ -349,6 +349,31 @@ func (s *Service) LevelRoles(ctx context.Context, p *auth.Principal) ([]api.Role
 	return s.projectRoles(ctx)
 }
 
+// Day2PolicyRoles are the roles a day-2 policy may name, with their names:
+// the deployment's owner, the built-in roles in day2RoleNames, then the
+// custom roles.
+func (s *Service) Day2PolicyRoles(ctx context.Context, p *auth.Principal) ([]api.RoleRef, error) {
+	if !readsPolicies(p) {
+		return nil, ErrForbidden
+	}
+	list, err := s.Store.Roles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []api.RoleRef{{Key: "owner", Name: "Owner"}}
+	for _, key := range day2RoleNames[1:] {
+		if r, ok := auth.BuiltinRole(key); ok {
+			out = append(out, api.RoleRef{Key: r.Key, Name: r.Name})
+		}
+	}
+	for _, st := range list {
+		if !st.BuiltIn {
+			out = append(out, api.RoleRef{Key: st.Key, Name: st.Name})
+		}
+	}
+	return out, nil
+}
+
 // LevelUsers are the users levels name, as approvers or to escalate to, by
 // name only: a project admin learns no more than whom the policies they
 // read ask. An ID no user has is left out.

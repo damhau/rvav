@@ -68,6 +68,11 @@ func TestProjectPolicies(t *testing.T) {
 			len(list.LevelRoles) == 0 {
 			t.Fatalf("a project admin lists %v", listed)
 		}
+		if len(list.PolicyRoles) == 0 || list.PolicyRoles[0] != (api.RoleRef{Key: "owner", Name: "Owner"}) ||
+			!slices.Contains(list.PolicyRoles, api.RoleRef{Key: "project-admin", Name: "Project admin"}) ||
+			slices.ContainsFunc(list.PolicyRoles, func(r api.RoleRef) bool { return r.Key == "auditor" }) {
+			t.Fatalf("the roles a day-2 policy may name = %+v", list.PolicyRoles)
+		}
 		h.json("GET", "/api/v1/admin/day2-policies", member, nil, 403, nil)
 
 		// Stricter than the global allow: it decides.

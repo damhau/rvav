@@ -62,6 +62,9 @@ describe("policies, in French", () => {
 
     await user.click(within(tabs).getByRole("tab", { name: "Jour 2" }));
     const region = await screen.findByRole("region", { name: "Politiques de jour 2" });
+    expect(await within(region).findByRole("row", { name: /Members operate their VMs/ })).toHaveTextContent(
+      "Propriétaire, Membre ou Administrateur de projet",
+    );
     await user.click((await within(region).findAllByRole("button", { name: /^Actions pour / }))[0]!);
     expect(await screen.findByRole("menuitem", { name: "Désactiver" })).toBeInTheDocument();
   });
