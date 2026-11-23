@@ -94,6 +94,45 @@ describe("Catalog items", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/catalog-items/team-share"));
   });
 
+  it("imports an item from YAML, after naming the line of a missing category", { timeout: 15_000 }, async () => {
+    const u = user();
+    const { router } = renderApp("/admin/catalog-items");
+    await u.click(await screen.findByRole("button", { name: "Import YAML" }));
+    const sheet = await screen.findByRole("dialog", { name: "Import an item" });
+    const file = (category: string) =>
+      [
+        "apiVersion: rvav.dev/v1",
+        "kind: CatalogItem",
+        "metadata:",
+        "  slug: team-vm",
+        "  name: Team VM",
+        "  summary: A VM for a team.",
+        `  category: ${category}`,
+        "  type: vm_blueprint",
+        "versions:",
+        '  - number: "1.0"',
+        "    form_schema: { type: object, properties: {} }",
+        "    ui_schema: { layout: { sections: [] }, fields: {} }",
+        "    blueprint: {}",
+      ].join("\n");
+    const yaml = within(sheet).getByRole("textbox", { name: "YAML" });
+    await u.click(yaml);
+    await u.paste(file('""'));
+    await u.click(within(sheet).getByRole("button", { name: "Import" }));
+    const problems = await within(sheet).findByRole("list", { name: "Import problems" });
+    expect(
+      within(problems)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["Choose a category. (line 7)"]);
+
+    await u.clear(yaml);
+    await u.paste(file("compute"));
+    await u.click(within(sheet).getByRole("button", { name: "Import" }));
+    expect(await screen.findByText("Imported as a draft")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/admin\/catalog-items\/itm_/));
+  });
+
   it("shows the repository in a line, and its files that need someone in a side panel", async () => {
     const u = user();
     renderApp("/admin/catalog-items");

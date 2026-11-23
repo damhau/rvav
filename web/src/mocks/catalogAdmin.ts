@@ -2,7 +2,7 @@
 // publish, deprecate and roll back, entitlements, categories, YAML. A
 // published version also becomes what the user-facing catalog serves.
 import { http, HttpResponse } from "msw";
-import { parse, stringify } from "yaml";
+import { isMap, isNode, isScalar, isSeq, LineCounter, parse, parseDocument, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { shownUrl } from "@/lib/utils";
 import { singleSource } from "@/forms/defaults";
@@ -516,6 +516,31 @@ function validationProblems(def: Definition, props: Record<string, unknown>, pre
       add("/kind", "invalid", "A validation is rest, cel, or an entry of the form library (library).");
   });
   return errors;
+}
+
+/** Names the line of the file a problem is on, as the server's import does (lineOf, catalog_yaml.go). */
+function onLine(text: string): (e: S["FieldError"]) => S["FieldError"] {
+  const lines = new LineCounter();
+  const root = parseDocument(text, { lineCounter: lines }).contents;
+  const lineAt = (node: unknown, or: number) => (isNode(node) && node.range ? lines.linePos(node.range[0]).line : or);
+  return (e) => {
+    let node: unknown = root;
+    let line = lineAt(root, 1);
+    for (const seg of e.field.replace(/^\//, "").split("/")) {
+      const key = seg.replaceAll("~1", "/").replaceAll("~0", "~");
+      let next: unknown;
+      if (isMap(node)) {
+        const pair = node.items.find((p) => isScalar(p.key) && String(p.key.value) === key);
+        if (!pair) break;
+        [next, line] = [pair.value, lineAt(pair.key, line)];
+      } else if (isSeq(node) && isNode(node.items[Number(key)])) {
+        next = node.items[Number(key)];
+        line = lineAt(next, line);
+      } else break;
+      node = next;
+    }
+    return { ...e, message: `${e.message} (line ${line})` };
+  };
 }
 
 function check(def: Definition, prefix: string): S["FieldError"][] {
@@ -1654,8 +1679,9 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         metadata?: Record<string, string>;
         versions?: (Definition & { number: string; changelog?: string })[];
       };
+      const text = await request.text();
       try {
-        doc = parse(await request.text()) as typeof doc;
+        doc = parse(text) as typeof doc;
       } catch (e) {
         return problem(422, "Some inputs need attention", [
           { field: "", code: "yaml", message: `This is not valid YAML: ${String(e)}` },
@@ -1668,12 +1694,21 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         return problem(422, "Some inputs need attention", [
           { field: "/versions", code: "required", message: "The item has no version." },
         ]);
-      const errors = versions.flatMap((v, i) => [
-        ...check(v, `/versions/${i}`),
-        ...inputReadProblems(db, v, `/versions/${i}`),
-        ...resourceWithProblems(db, v.blueprint, `/versions/${i}/blueprint`),
-      ]);
-      if (errors.length) return problem(422, "Some inputs need attention", errors);
+      const m = doc.metadata ?? {};
+      const errors: S["FieldError"][] = [];
+      if (!into && !m.category)
+        errors.push({ field: "/metadata/category", code: "required", message: "Choose a category." });
+      else if (!into && !db.categories.some((c) => c.key === m.category))
+        errors.push({ field: "/metadata/category", code: "unknown", message: `There is no category "${m.category}".` });
+      if (!errors.length)
+        errors.push(
+          ...versions.flatMap((v, i) => [
+            ...check(v, `/versions/${i}`),
+            ...inputReadProblems(db, v, `/versions/${i}`),
+            ...resourceWithProblems(db, v.blueprint, `/versions/${i}/blueprint`),
+          ]),
+        );
+      if (errors.length) return problem(422, "Some inputs need attention", errors.map(onLine(text)));
       const def = (v: Definition): Definition => ({
         form_schema: v.form_schema,
         ui_schema: v.ui_schema,
@@ -1698,11 +1733,10 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         });
         return HttpResponse.json({ item_id: item.id, created: false, versions: existing.map(summary) });
       }
-      const m = doc.metadata ?? {};
       if (find(m.slug ?? "")) return problem(409, "Conflict", undefined, `The slug "${m.slug}" is taken.`);
       const item: StoredItem = {
         id: uid("itm"), slug: m.slug ?? uid("item"), name: m.name ?? "Imported item", summary: m.summary ?? "", description_md: "",
-        category: m.category ?? "compute", type: (m.type ?? "vm_blueprint") as StoredItem["type"], icon: m.icon ?? "server", tags: [],
+        category: m.category ?? "", type: (m.type ?? "vm_blueprint") as StoredItem["type"], icon: m.icon ?? "server", tags: [],
         featured: false, source: { kind: "native" }, version: { id: "", number: "" }, approval: "never",
         favourite: false, requests_last_30_days: 0, projectIds: [],
       }; // prettier-ignore

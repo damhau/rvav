@@ -2049,7 +2049,10 @@ An item's tabs:
   approval or scheduled, run as they were submitted. A role an item names
   can't be deleted until you change the item's sharing.
 
-Items can be exported and imported as YAML, between installations.
+Items can be exported and imported as YAML, between installations. A file
+that makes a new item, imported with **Import YAML** or added to the
+catalog's Git repository, needs a category this installation has, in
+`metadata.category`: rvav refuses it otherwise, and names the line.
 
 ### Property groups
 

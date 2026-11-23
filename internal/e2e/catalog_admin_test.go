@@ -292,6 +292,34 @@ func TestCatalogEntitlementsCategoriesYAML(t *testing.T) {
 		if len(problem.Errors) != 1 || !strings.HasSuffix(problem.Errors[0].Field, "/label") || !strings.Contains(problem.Errors[0].Message, "(line ") {
 			t.Fatalf("errors = %+v", problem.Errors)
 		}
+		// Without a category, as a new item is: refused at the field, on the
+		// line of the category, or of the metadata when it has none.
+		lineOf := func(doc, prefix string) string {
+			for i, l := range strings.Split(doc, "\n") {
+				if strings.HasPrefix(l, prefix) {
+					return fmt.Sprintf(" (line %d)", i+1)
+				}
+			}
+			t.Fatalf("no line starts with %q", prefix)
+			return ""
+		}
+		other := strings.Replace(copyYAML, "slug: rhel9-copy", "slug: rhel9-other", 1)
+		category := "  category: " + rhel.Category + "\n"
+		empty, missing := strings.Replace(other, category, "  category: \"\"\n", 1), strings.Replace(other, category, "", 1)
+		if empty == other || missing == other {
+			t.Fatalf("no %q in the export", category)
+		}
+		for _, c := range []struct{ doc, want string }{
+			{empty, "Choose a category." + lineOf(empty, "  category:")},
+			{missing, "Choose a category." + lineOf(missing, "metadata:")},
+		} {
+			var refused struct{ Errors []api.FieldError }
+			h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(c.doc), 422, &refused, "Content-Type", "application/yaml")
+			if len(refused.Errors) != 1 || refused.Errors[0].Field != "/metadata/category" || deref(refused.Errors[0].Code) != "required" ||
+				refused.Errors[0].Message != c.want {
+				t.Fatalf("an item imported without a category = %+v", refused.Errors)
+			}
+		}
 		h.json("POST", "/api/v1/admin/catalog/import", "tnguyen", rawYAML(copyYAML), 403, nil, "Content-Type", "application/yaml")
 	})
 }

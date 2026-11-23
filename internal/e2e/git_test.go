@@ -602,10 +602,15 @@ func TestCatalogGitDrafts(t *testing.T) {
 			m["slug"], m["category"] = "broken", "no-such-category"
 		})
 		mismatch := editFile(t, copied, func(doc, _ map[string]any) { doc["metadata"].(map[string]any)["slug"] = "other" })
+		uncategorised := editFile(t, copied, func(doc, _ map[string]any) {
+			m := doc["metadata"].(map[string]any)
+			m["slug"], m["category"] = "uncategorised", ""
+		})
 		push(t, ctx, reader, "New items", gitrepo.Change{Path: "catalog/rhel9-hardened.yaml", Content: copied},
 			gitrepo.Change{Path: "catalog/broken.yaml", Content: broken}, gitrepo.Change{Path: "catalog/mismatch.yaml", Content: mismatch},
+			gitrepo.Change{Path: "catalog/uncategorised.yaml", Content: uncategorised},
 			gitrepo.Change{Path: "catalog/notes.txt", Content: []byte("not an item")})
-		if rep := h.syncGit(); rep.Drafts != 1 || rep.Refused != 2 {
+		if rep := h.syncGit(); rep.Drafts != 1 || rep.Refused != 3 {
 			t.Fatalf("new files = %+v", rep)
 		}
 		hardened := item("rhel9-hardened")
@@ -627,13 +632,22 @@ func TestCatalogGitDrafts(t *testing.T) {
 			!strings.Contains((*m.Problems)[0].Message, "must be the same") {
 			t.Fatalf("the misnamed file = %+v", m)
 		}
+		u := byPath["catalog/uncategorised.yaml"]
+		var problems []api.FieldError
+		if u.Problems != nil {
+			problems = *u.Problems
+		}
+		if u.State != api.CatalogGitFileStateRefused || u.Item != nil || len(problems) != 1 || problems[0].Field != "/metadata/category" ||
+			deref(problems[0].Code) != "required" || !strings.HasPrefix(problems[0].Message, "Choose a category. (line ") {
+			t.Fatalf("the file without a category = %s %+v", u.State, problems)
+		}
 		if _, ok := byPath["catalog/notes.txt"]; ok || !status.Configured || deref(status.Head) == "" || status.ReadAt == nil {
 			t.Fatalf("the status = %+v", status)
 		}
-		// Fixed in the repository: an item; the other removed: forgotten.
+		// Fixed in the repository: an item; the others removed: forgotten.
 		fixed := editFile(t, broken, func(doc, _ map[string]any) { doc["metadata"].(map[string]any)["category"] = rhel.Category })
 		push(t, ctx, reader, "Fix and clean up", gitrepo.Change{Path: "catalog/broken.yaml", Content: fixed},
-			gitrepo.Change{Path: "catalog/mismatch.yaml"})
+			gitrepo.Change{Path: "catalog/mismatch.yaml"}, gitrepo.Change{Path: "catalog/uncategorised.yaml"})
 		if rep := h.syncGit(); rep.Drafts != 1 || rep.Refused != 0 || rep.Deleted != 0 {
 			t.Fatalf("fixed = %+v", rep)
 		}

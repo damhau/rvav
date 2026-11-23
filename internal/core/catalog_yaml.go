@@ -311,7 +311,9 @@ func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte
 		if _, ok := itemKinds[m.Type]; !ok {
 			add("/metadata/type", "invalid", fmt.Sprintf("%q is not a type of item that can be imported.", m.Type))
 		}
-		if ok, err := s.Store.CategoryExists(ctx, m.Category); err != nil {
+		if m.Category == "" {
+			add("/metadata/category", "required", "Choose a category.")
+		} else if ok, err := s.Store.CategoryExists(ctx, m.Category); err != nil {
 			return api.CatalogImportResult{}, err
 		} else if !ok {
 			add("/metadata/category", "unknown", fmt.Sprintf("There is no category %q.", m.Category))

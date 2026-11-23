@@ -4,7 +4,8 @@
 // bindings are and read (blueprint_inputs.go); what its custom resources
 // bind (custom_resources.go); a request nothing names refused, and the
 // version that names nothing warned of it (#216); an item saved without a
-// category refused at the field, as a new one is (catalog_admin.go).
+// category refused at the field, as a new one is (catalog_admin.go), and
+// one imported without, on its line (catalog_yaml.go).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -146,6 +147,41 @@ describe("the mocks' VM item drafts", () => {
       status: 422,
       errors: [{ field: "/category", code: "unknown", message: 'There is no category "nope".' }],
     });
+  });
+
+  it("refuse an item imported without a category at the field, on its line, as a new one", async () => {
+    const { item } = await newVmItem("exported-vm");
+    const exported = await call(
+      api.GET("/admin/catalog/items/{itemId}/export", { params: { path: { itemId: item.id } }, parseAs: "text" }),
+    );
+    const file = String(exported).replace("slug: exported-vm", "slug: imported-vm");
+    expect(file).toMatch(/^metadata:$/m);
+    expect(file.split("\n").indexOf("  category: compute")).toBe(6);
+    const imported = (yaml: string) =>
+      call(
+        api.POST("/admin/catalog/import", {
+          body: yaml,
+          bodySerializer: (b: string) => b,
+          headers: { "Content-Type": "application/yaml" },
+        }),
+      ).then(
+        () => ({ status: 200, errors: [] }),
+        (e: { status: number; fieldErrors: S["FieldError"][] }) => ({ status: e.status, errors: e.fieldErrors }),
+      );
+    const refused = (code: string, message: string) => ({
+      status: 422,
+      errors: [{ field: "/metadata/category", code, message }],
+    });
+    expect(await imported(file.replace("category: compute", 'category: ""'))).toEqual(
+      refused("required", "Choose a category. (line 7)"),
+    );
+    expect(await imported(file.replace("  category: compute\n", ""))).toEqual(
+      refused("required", `Choose a category. (line ${file.split("\n").indexOf("metadata:") + 1})`),
+    );
+    expect(await imported(file.replace("category: compute", "category: nope"))).toEqual(
+      refused("unknown", 'There is no category "nope". (line 7)'),
+    );
+    expect(await imported(file)).toEqual({ status: 200, errors: [] });
   });
 
   it("warn of VMs only a naming policy names, unless one applies everywhere", async () => {
