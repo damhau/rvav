@@ -13,8 +13,9 @@ import (
 // typed must not become YAML of its own: an input is printed only through
 // json, which quotes it as a YAML scalar.
 
-// UserDataFuncs are the functions user data may call. secret is replaced
-// by the worker's, which opens the stored secret (ADR-0038).
+// UserDataFuncs are the functions user data may call. secret and file are
+// replaced by the worker's, which open the stored secret (ADR-0038) and
+// read the file a shared variable holds (ADR-0057).
 var UserDataFuncs = template.FuncMap{
 	"json": func(v any) (string, error) {
 		b, err := json.Marshal(v)
@@ -22,6 +23,9 @@ var UserDataFuncs = template.FuncMap{
 	},
 	"secret": func(string) (string, error) {
 		return "", errors.New("a secret is opened only when the VM is built")
+	},
+	"file": func(string) (string, error) {
+		return "", errors.New("a file is read only when the VM is built")
 	},
 }
 
@@ -74,7 +78,10 @@ func CheckUserData(text string) error {
 	if len(bad) > 0 {
 		return fmt.Errorf("print inputs through json, as in {{ .inputs.name | json }}: %s", strings.Join(bad, ", "))
 	}
-	_, err = UserDataSecrets(text)
+	if _, err = UserDataSecrets(text); err != nil {
+		return err
+	}
+	_, err = UserDataFiles(text)
 	return err
 }
 

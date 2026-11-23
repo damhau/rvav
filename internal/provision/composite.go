@@ -429,12 +429,17 @@ type Resolved struct {
 // ResolveStep evaluates a step's condition and bindings over the request's
 // inputs and the outputs of earlier steps.
 func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved, error) {
-	vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
+	vars, err := a.stepVars(ctx, in.RequestID, in.Steps, in.When, in.With)
 	if err != nil {
 		return Resolved{}, err
 	}
 	addExtra(vars, in.Extra)
-	return resolveStep(in, vars)
+	out, err := resolveStep(in, vars)
+	if err == nil {
+		shared, _ := vars["vars"].(map[string]any)
+		byReference(out.Values, in.With, shared)
+	}
+	return out, err
 }
 
 // resolveStep evaluates a step's condition and bindings over vars. Its errors
@@ -476,8 +481,9 @@ func resolveStep(in ResolveInput, vars policy.Vars) (Resolved, error) {
 // stepVars are the CEL variables of a composite's steps: the request's
 // inputs (a secret input as its marker), the outputs of earlier steps, its
 // project's properties, the constants of its property groups and the
-// shared variables as they are now.
-func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[string]any) (policy.Vars, error) {
+// shared variables as they are now, with the text of the files of those
+// that reads (the step's expressions) name.
+func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[string]any, reads ...any) (policy.Vars, error) {
 	r, err := a.Store.GetRequest(ctx, requestID)
 	if err != nil {
 		return nil, err
@@ -505,6 +511,9 @@ func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[s
 	}
 	shared, err := a.Store.VariableValues(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.withFileTexts(ctx, shared, reads...); err != nil {
 		return nil, err
 	}
 	return policy.Vars{"inputs": inputs, "steps": steps, "environment": r.Environment,

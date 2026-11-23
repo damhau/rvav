@@ -355,6 +355,9 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.json("POST", "/api/v1/admin/resource-types", admin, api.ResourceTypeWrite{Key: new("a1-lb"), Title: "Load balancer",
 		Create: lb, Delete: lb}, 201, nil)
 	h.json("POST", "/api/v1/admin/variables", admin, api.VariableCreate{Group: "a1", Name: "site", Value: "gva"}, 201, nil)
+	// A file, so that its download is walked too (E2.1).
+	motd, motdType := variableUpload("motd.txt", "Welcome.\n")
+	h.json("PUT", "/api/v1/admin/variables/a1.motd/file", admin, motd, 201, nil, "Content-Type", motdType)
 	h.svc.ScheduleControl = &scheduleFake{specs: map[string]provision.ScheduleSpec{}, paused: map[string]string{}}
 	var schedule api.Schedule
 	h.json("POST", "/api/v1/schedules", "tnguyen", hourly(cleanupItem(h), map[string]any{"target": "/tmp"}), 201, &schedule)
@@ -436,7 +439,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"audit-destinations/{id}":        auditDest.Id,
 		"workflows/{key}":                "a1-report",
 		"resource-types/{key}":           "a1-lb",
-		"variables/{key}":                "a1.site",
+		"variables/{key}":                "a1.motd",
 		"schedules/{scheduleId}":         schedule.Id,
 		"requests/{ritmSysId}":           a1RITM,
 		"signal/{name}":                  "a1-signal",

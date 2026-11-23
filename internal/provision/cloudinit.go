@@ -98,13 +98,14 @@ func nonNil(s []string) []string {
 
 // renderUserData renders a blueprint's user data template over what the
 // VM and its request are; a value it names that isn't there is an error.
-// secret opens the stored secrets it names (ADR-0038).
-func renderUserData(text string, vars map[string]any, secret func(name string) (string, error)) (string, error) {
+// secret opens the stored secrets it names (ADR-0038), file reads the files
+// shared variables hold (ADR-0057).
+func renderUserData(text string, vars map[string]any, secret, file func(name string) (string, error)) (string, error) {
 	t, err := blueprint.ParseUserData(text)
 	if err != nil {
 		return "", err
 	}
-	t.Funcs(template.FuncMap{"secret": secret})
+	t.Funcs(template.FuncMap{"secret": secret, "file": file})
 	var b bytes.Buffer
 	if err := t.Execute(&b, vars); err != nil {
 		return "", err

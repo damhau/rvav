@@ -52,7 +52,7 @@ func (a *Activities) SendStepMessage(ctx context.Context, in NotifyInput) (map[s
 		return map[string]any{"told": 0}, nil // nobody is to be told
 	}
 	a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "running"})
-	vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
+	vars, err := a.stepVars(ctx, in.RequestID, in.Steps, in.Notify)
 	if err != nil {
 		return nil, err
 	}

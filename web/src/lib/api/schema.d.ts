@@ -5089,9 +5089,13 @@ export interface paths {
          * @description Named values that aren't secret, which composite steps and conditions
          *     read as `vars.<group>.<name>` each time they run, as vRO's
          *     configuration elements: written so, not by index nor a group whole,
-         *     which saving refuses. Each with the items that read it. Reading them
-         *     needs `catalog.manage` or `extensibility.read` (auditors) for all of
-         *     rvav; changing them, `catalog.manage`.
+         *     which saving refuses. Each with the items that read it. A variable
+         *     may hold a text file instead (`type: file`), uploaded with
+         *     `PUT /admin/variables/{key}/file`: steps read it as
+         *     `{name, size, sha256, content_type, text}`, and cloud-init user data
+         *     as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+         *     or `extensibility.read` (auditors) for all of rvav; changing them,
+         *     `catalog.manage`.
          */
         get: operations["listVariables"];
         put?: never;
@@ -5125,12 +5129,50 @@ export interface paths {
         /**
          * Change a shared variable's value (its group and name stay)
          * @description Steps that run from then on read the new value, in requests already
-         *     running too. Audited with the value it had.
+         *     running too. Audited with the value it had. A variable that holds a
+         *     file is changed by uploading its new file (409 here).
          */
         put: operations["updateVariable"];
         post?: never;
         /** Remove a shared variable no item or running request reads */
         delete: operations["deleteVariable"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/variables/{key}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the file a shared variable holds
+         * @description Always a download, never shown in the browser. 404 for a variable
+         *     that holds a value.
+         */
+        get: operations["downloadVariableFile"];
+        /**
+         * Add a shared variable that holds a file, or replace its file
+         * @description A text file (UTF-8) of 256 KiB at most, not empty, sent as
+         *     `multipart/form-data`: its `file` part, with the file's name, and
+         *     a `description`. Adding one needs the file; replacing it, the file
+         *     or a description, which alone changes only that. Not for keys: a
+         *     file that holds a private key is refused (`secret`), as a group or
+         *     a name that says it holds a password, a token or a key, and those
+         *     are stored as secrets. Steps that run from then on read the new
+         *     file, in requests already running too. Audited with the file's
+         *     name, size and SHA-256, not its content. 409 for a variable that
+         *     holds a value. Needs `catalog.manage` for all of rvav.
+         */
+        put: operations["putVariableFile"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11963,9 +12005,16 @@ export interface components {
             group: string;
             /** @example dns_servers */
             name: string;
+            /**
+             * @description `value`: it holds `value`; `file`: a text file, which `file` describes.
+             * @enum {string}
+             */
+            type: "value" | "file";
+            /** @description What steps read as `vars.<group>.<name>`. A file's is its `name`, `size`, `sha256` and `content_type`: steps read its content as `.text` besides. */
             value: components["schemas"]["VariableValue"];
+            file?: components["schemas"]["VariableFile"];
             description: string;
-            /** @description The items whose draft or published version reads it (`item <slug>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed. */
+            /** @description The items whose draft or published version reads it (`item <slug>`), the VM templates whose user data reads its file (`template <key>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed. */
             used_by: string[];
             /** Format: date-time */
             created_at: string;
@@ -11976,6 +12025,30 @@ export interface components {
         };
         VariableList: {
             items: components["schemas"]["Variable"][];
+        };
+        VariableFile: {
+            /** @example motd.txt */
+            name: string;
+            /**
+             * Format: int64
+             * @description In bytes.
+             */
+            size: number;
+            /** @description Its content's SHA-256, in hex. */
+            sha256: string;
+            /**
+             * @description Told by its name's extension; text/plain when rvav doesn't know it.
+             * @example text/plain
+             */
+            content_type: string;
+        };
+        VariableFileUpload: {
+            /**
+             * Format: binary
+             * @description The file, with its name. A text file (UTF-8) of 256 KiB at most.
+             */
+            file?: string;
+            description?: string;
         };
         ResourceTypeWrite: {
             /**
@@ -20534,6 +20607,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
         };
     };
@@ -20560,6 +20634,77 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    downloadVariableFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    /** @description `attachment`, with the file's name. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putVariableFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["VariableFileUpload"];
+            };
+        };
+        responses: {
+            /** @description Replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     listApiTokens: {

@@ -520,7 +520,7 @@ func (a *Activities) resourceInputs(ctx context.Context, req store.RequestRow, d
 	if run.Resolved {
 		return orEmpty(run.Inputs), nil
 	}
-	vars, err := a.stepVars(ctx, req.ID, nil)
+	vars, err := a.stepVars(ctx, req.ID, nil, unit.With)
 	if err != nil {
 		return nil, err
 	}
@@ -554,6 +554,8 @@ func (a *Activities) resourceInputs(ctx context.Context, req store.RequestRow, d
 		}
 		out[k] = v
 	}
+	shared, _ := vars["vars"].(map[string]any)
+	byReference(out, unit.With, shared)
 	return out, nil
 }
 

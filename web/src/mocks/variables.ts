@@ -23,6 +23,7 @@ function state(db: Db): Stored[] {
   const d = db as Db & { variables?: Stored[] };
   d.variables ??= [
     {
+      type: "value",
       group: "backup",
       name: "s3_bucket",
       value: "pg-backups-gva",
@@ -32,6 +33,7 @@ function state(db: Db): Stored[] {
       updated_by: "Léa Martin",
     },
     {
+      type: "value",
       group: "cmdb",
       name: "site",
       value: "gva",
@@ -41,6 +43,7 @@ function state(db: Db): Stored[] {
       updated_by: "Léa Martin",
     },
     {
+      type: "value",
       group: "network",
       name: "dns_servers",
       value: ["10.20.0.53", "10.20.0.54"],
@@ -167,6 +170,7 @@ export function variableHandlers(db: Db, base: string, wait: () => Promise<void>
           `There is a variable ${group}.${name} already: change its value instead.`,
         );
       const v: Stored = {
+        type: "value",
         group,
         name,
         value: w.value,

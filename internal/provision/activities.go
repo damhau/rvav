@@ -1116,6 +1116,14 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 		out.secret = out.secret || err == nil
 		return v, err
 	}
+	own := ""
+	if in.Guest.CloudInit != nil {
+		own = in.Guest.CloudInit.UserData
+	}
+	file, err := a.userDataFiles(ctx, own, in.VM.ImageUserData)
+	if err != nil {
+		return out, err
+	}
 	// A secret input shows in the user data when it renders otherwise
 	// with the inputs still sealed.
 	readsSecretInput := func(text, rendered string) bool {
@@ -1124,17 +1132,17 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 		}
 		withSealed := maps.Clone(vars)
 		withSealed["inputs"] = sealed
-		again, err := renderUserData(text, withSealed, secret)
+		again, err := renderUserData(text, withSealed, secret, file)
 		return err != nil || again != rendered
 	}
 	if in.Guest.CloudInit != nil {
-		if out.own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret); err != nil {
+		if out.own, err = renderUserData(in.Guest.CloudInit.UserData, vars, secret, file); err != nil {
 			return out, permanent("user data: %v. Ask a catalog admin to check this item.", err)
 		}
 		out.secret = out.secret || readsSecretInput(in.Guest.CloudInit.UserData, out.own)
 	}
 	if in.VM.ImageUserData != "" {
-		if out.image, err = renderUserData(in.VM.ImageUserData, vars, secret); err != nil {
+		if out.image, err = renderUserData(in.VM.ImageUserData, vars, secret, file); err != nil {
 			return out, permanent("the template's user data: %v. Ask an administrator to check the template.", err)
 		}
 		out.secret = out.secret || readsSecretInput(in.VM.ImageUserData, out.image)
@@ -1480,6 +1488,10 @@ func (a *Activities) runJob(ctx context.Context, in JobInput) error {
 		extra, err := a.openSecretInputs(ctx, in.RequestID, in.ExtraVars)
 		if err != nil {
 			return permanent("%v", err)
+		}
+		// And the files a binding gives whole (ADR-0057).
+		if extra, err = a.openFiles(ctx, extra); err != nil {
+			return err
 		}
 		if len(in.Secrets) > 0 {
 			extra = maps.Clone(extra)

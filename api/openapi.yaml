@@ -6660,9 +6660,13 @@ paths:
         Named values that aren't secret, which composite steps and conditions
         read as `vars.<group>.<name>` each time they run, as vRO's
         configuration elements: written so, not by index nor a group whole,
-        which saving refuses. Each with the items that read it. Reading them
-        needs `catalog.manage` or `extensibility.read` (auditors) for all of
-        rvav; changing them, `catalog.manage`.
+        which saving refuses. Each with the items that read it. A variable
+        may hold a text file instead (`type: file`), uploaded with
+        `PUT /admin/variables/{key}/file`: steps read it as
+        `{name, size, sha256, content_type, text}`, and cloud-init user data
+        as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+        or `extensibility.read` (auditors) for all of rvav; changing them,
+        `catalog.manage`.
       responses:
         "200":
           description: The variables, by group and name
@@ -6723,7 +6727,8 @@ paths:
       summary: Change a shared variable's value (its group and name stay)
       description: |
         Steps that run from then on read the new value, in requests already
-        running too. Audited with the value it had.
+        running too. Audited with the value it had. A variable that holds a
+        file is changed by uploading its new file (409 here).
       requestBody:
         required: true
         content:
@@ -6738,6 +6743,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [admin]
@@ -6749,6 +6755,72 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/variables/{key}/file:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: The variable as `<group>.<name>`.
+        schema: { type: string, examples: [linux.motd] }
+    get:
+      tags: [admin]
+      operationId: downloadVariableFile
+      summary: Download the file a shared variable holds
+      description: |
+        Always a download, never shown in the browser. 404 for a variable
+        that holds a value.
+      responses:
+        "200":
+          description: The file
+          headers:
+            Content-Disposition:
+              description: "`attachment`, with the file's name."
+              schema: { type: string }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: putVariableFile
+      summary: Add a shared variable that holds a file, or replace its file
+      description: |
+        A text file (UTF-8) of 256 KiB at most, not empty, sent as
+        `multipart/form-data`: its `file` part, with the file's name, and
+        a `description`. Adding one needs the file; replacing it, the file
+        or a description, which alone changes only that. Not for keys: a
+        file that holds a private key is refused (`secret`), as a group or
+        a name that says it holds a password, a token or a key, and those
+        are stored as secrets. Steps that run from then on read the new
+        file, in requests already running too. Audited with the file's
+        name, size and SHA-256, not its content. 409 for a variable that
+        holds a value. Needs `catalog.manage` for all of rvav.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/VariableFileUpload" }
+      responses:
+        "200":
+          description: Replaced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Variable" }
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Variable" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /tokens:
     get:
@@ -15480,16 +15552,24 @@ components:
         description: { type: string, maxLength: 500 }
     Variable:
       type: object
-      required: [key, group, name, value, description, used_by, created_at, updated_at]
+      required: [key, group, name, type, value, description, used_by, created_at, updated_at]
       properties:
         key: { type: string, description: "`<group>.<name>`, as the API names it.", examples: [network.dns_servers] }
         group: { type: string, examples: [network] }
         name: { type: string, examples: [dns_servers] }
-        value: { $ref: "#/components/schemas/VariableValue" }
+        type:
+          type: string
+          enum: [value, file]
+          x-enum-varnames: [VariableTypeValue, VariableTypeFile]
+          description: "`value`: it holds `value`; `file`: a text file, which `file` describes."
+        value:
+          allOf: [{ $ref: "#/components/schemas/VariableValue" }]
+          description: "What steps read as `vars.<group>.<name>`. A file's is its `name`, `size`, `sha256` and `content_type`: steps read its content as `.text` besides."
+        file: { $ref: "#/components/schemas/VariableFile" }
         description: { type: string }
         used_by:
           type: array
-          description: "The items whose draft or published version reads it (`item <slug>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed."
+          description: "The items whose draft or published version reads it (`item <slug>`), the VM templates whose user data reads its file (`template <key>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed."
           items: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -15501,6 +15581,22 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/Variable" }
+    VariableFile:
+      type: object
+      required: [name, size, sha256, content_type]
+      properties:
+        name: { type: string, examples: [motd.txt] }
+        size: { type: integer, format: int64, description: In bytes. }
+        sha256: { type: string, description: "Its content's SHA-256, in hex." }
+        content_type: { type: string, description: "Told by its name's extension; text/plain when rvav doesn't know it.", examples: [text/plain] }
+    VariableFileUpload:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+          description: The file, with its name. A text file (UTF-8) of 256 KiB at most.
+        description: { type: string, maxLength: 500 }
     ResourceTypeWrite:
       type: object
       required: [title, create, delete]

@@ -42,9 +42,19 @@ func BindingSecret(v any) (string, bool) {
 // secret named otherwise than in quotes is an error: the requester's inputs
 // must never choose which secret is opened.
 func UserDataSecrets(text string) ([]SecretRef, error) {
+	refs, bad, err := userDataCalls(text, "secret")
+	if err == nil && len(bad) > 0 {
+		err = fmt.Errorf("name the secret in quotes, as in {{ secret \"name\" }}: %s", strings.Join(bad, ", "))
+	}
+	return refs, err
+}
+
+// userDataCalls lists what user data calls fn with, each by its line, and
+// the lines where it calls fn otherwise than as {{ fn "literal" }}.
+func userDataCalls(text, fn string) ([]SecretRef, []string, error) {
 	t, err := ParseUserData(text)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var refs []SecretRef
 	var bad []string
@@ -56,7 +66,7 @@ func UserDataSecrets(text string) ([]SecretRef, error) {
 		}
 		for i, c := range p.Cmds {
 			for j, a := range c.Args {
-				if id, ok := a.(*parse.IdentifierNode); ok && id.Ident == "secret" {
+				if id, ok := a.(*parse.IdentifierNode); ok && id.Ident == fn {
 					name, literal := "", false
 					if j == 0 && i == 0 && len(c.Args) == 2 {
 						if s, ok := c.Args[1].(*parse.StringNode); ok {
@@ -107,10 +117,7 @@ func UserDataSecrets(text string) ([]SecretRef, error) {
 	for _, tt := range t.Templates() {
 		walk(tt.Root)
 	}
-	if len(bad) > 0 {
-		return refs, fmt.Errorf("name the secret in quotes, as in {{ secret \"name\" }}: %s", strings.Join(bad, ", "))
-	}
-	return refs, nil
+	return refs, bad, nil
 }
 
 // Secrets lists the stored secrets a blueprint names: a Windows guest's

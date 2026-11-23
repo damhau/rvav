@@ -132,6 +132,16 @@ func (s *Service) SaveVMTemplate(ctx context.Context, p *auth.Principal, key str
 			return api.VmTemplate{}, err
 		}
 	}
+	// And the shared variables whose file it reads (ADR-0057).
+	files, _ := blueprint.UserDataFiles(userData)
+	for i := range files {
+		files[i].Pointer = "/user_data"
+	}
+	fileErrs, err := s.checkFileRefs(ctx, files, "")
+	if err != nil {
+		return api.VmTemplate{}, err
+	}
+	errs = append(errs, fileErrs...)
 	linked := w.LinkedClone != nil && *w.LinkedClone
 	if linked && slices.ContainsFunc(sources, func(s store.TemplateSource) bool { return s.Library != "" }) {
 		errs = append(errs, fieldErr("/linked_clone", "invalid",

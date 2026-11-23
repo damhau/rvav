@@ -206,7 +206,7 @@ func runLoop(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map
 // loop's. Called again (a Retry), it adds the passes it lacks: those done are
 // kept by their position.
 func (a *Activities) OpenLoop(ctx context.Context, in LoopInput) ([]any, error) {
-	vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
+	vars, err := a.stepVars(ctx, in.RequestID, in.Steps, in.Items)
 	if err != nil {
 		return nil, err
 	}

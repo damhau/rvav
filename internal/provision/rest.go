@@ -86,7 +86,7 @@ func (a *Activities) callREST(ctx context.Context, in RESTInput) (map[string]any
 		return nil, permanent("This rvav makes no REST calls.")
 	}
 	call := in.Call
-	vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
+	vars, err := a.stepVars(ctx, in.RequestID, in.Steps, call)
 	if err != nil {
 		return nil, err
 	}

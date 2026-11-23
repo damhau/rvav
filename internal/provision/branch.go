@@ -129,7 +129,7 @@ func (a *Activities) DecideBranch(ctx context.Context, in BranchInput) (int, err
 	taken, chose := branchCase(kept)
 	if !chose {
 		a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "running"})
-		vars, err := a.stepVars(ctx, in.RequestID, in.Steps)
+		vars, err := a.stepVars(ctx, in.RequestID, in.Steps, in.Cases)
 		if err != nil {
 			return 0, err
 		}

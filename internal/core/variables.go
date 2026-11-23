@@ -33,8 +33,11 @@ const maxVariableValue = 16 << 10
 
 func presentVariable(v store.Variable, users map[string][]string) api.Variable {
 	key := v.Group + "." + v.Name
-	out := api.Variable{Key: key, Group: v.Group, Name: v.Name, Description: v.Description, UsedBy: nonNilStrings(users[key]),
-		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, UpdatedBy: v.UpdatedByName}
+	out := api.Variable{Key: key, Group: v.Group, Name: v.Name, Type: api.VariableTypeValue, Description: v.Description,
+		UsedBy: nonNilStrings(users[key]), CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, UpdatedBy: v.UpdatedByName}
+	if out.File = variableFile(v); out.File != nil {
+		out.Type = api.VariableTypeFile
+	}
 	_ = json.Unmarshal(v.Value, &out.Value)
 	return out
 }
@@ -87,15 +90,7 @@ func (s *Service) CreateVariable(ctx context.Context, p *auth.Principal, w api.V
 		return api.Variable{}, ErrForbidden
 	}
 	v := store.Variable{Group: strings.TrimSpace(w.Group), Name: strings.TrimSpace(w.Name)}
-	var errs []api.FieldError
-	for _, part := range []struct{ ptr, value string }{{"/group", v.Group}, {"/name", v.Name}} {
-		switch {
-		case !variablePart.MatchString(part.value):
-			errs = append(errs, fieldErr(part.ptr, "pattern", "1 to 41 lower-case letters, digits and underscores, starting with a letter: steps read vars.<group>.<name>."))
-		case secretLike.MatchString(part.value):
-			errs = append(errs, fieldErr(part.ptr, "secret", "A variable isn't masked anywhere: store a password, a token or a key as a secret instead."))
-		}
-	}
+	errs := checkVariableKey(v.Group, v.Name)
 	errs = append(errs, checkVariable(&v, w.Value, w.Description)...)
 	if len(errs) > 0 {
 		return api.Variable{}, &ValidationError{Errors: errs}
@@ -111,6 +106,20 @@ func (s *Service) CreateVariable(ctx context.Context, p *auth.Principal, w api.V
 	return s.variable(ctx, key)
 }
 
+// checkVariableKey checks a new variable's group and name.
+func checkVariableKey(group, name string) []api.FieldError {
+	var errs []api.FieldError
+	for _, part := range []struct{ ptr, value string }{{"/group", group}, {"/name", name}} {
+		switch {
+		case !variablePart.MatchString(part.value):
+			errs = append(errs, fieldErr(part.ptr, "pattern", "1 to 41 lower-case letters, digits and underscores, starting with a letter: steps read vars.<group>.<name>."))
+		case secretLike.MatchString(part.value):
+			errs = append(errs, fieldErr(part.ptr, "secret", "A variable isn't masked anywhere: store a password, a token or a key as a secret instead."))
+		}
+	}
+	return errs
+}
+
 // UpdateVariable changes a shared variable's value and description; steps
 // that run from then on read the new value.
 func (s *Service) UpdateVariable(ctx context.Context, p *auth.Principal, key string, w api.VariableUpdate) (api.Variable, error) {
@@ -123,6 +132,9 @@ func (s *Service) UpdateVariable(ctx context.Context, p *auth.Principal, key str
 		return api.Variable{}, ErrNotFound
 	} else if err != nil {
 		return api.Variable{}, err
+	}
+	if old.HoldsFile() {
+		return api.Variable{}, &ConflictError{Msg: key + " holds a file: upload its new file instead."}
 	}
 	v := store.Variable{Group: group, Name: name}
 	if errs := checkVariable(&v, w.Value, w.Description); len(errs) > 0 {
@@ -147,7 +159,7 @@ func checkVariable(v *store.Variable, value any, description *string) []api.Fiel
 	case err != nil:
 		errs = append(errs, fieldErr("/value", "invalid", "Not a value JSON can hold."))
 	case len(raw) > maxVariableValue:
-		errs = append(errs, fieldErr("/value", "too_long", fmt.Sprintf("At most %d KiB of JSON: keep files elsewhere.", maxVariableValue>>10)))
+		errs = append(errs, fieldErr("/value", "too_long", fmt.Sprintf("At most %d KiB of JSON: upload a larger text as a file.", maxVariableValue>>10)))
 	}
 	v.Value, v.Description = raw, strings.TrimSpace(deref(description))
 	if utf8.RuneCountInString(v.Description) > 500 {
@@ -173,8 +185,11 @@ func (s *Service) DeleteVariable(ctx context.Context, p *auth.Principal, key str
 	}
 	if u := users[key]; len(u) > 0 {
 		then := "change their steps first."
-		if slices.ContainsFunc(u, func(by string) bool { return strings.HasPrefix(by, "request ") }) {
+		switch {
+		case slices.ContainsFunc(u, func(by string) bool { return strings.HasPrefix(by, "request ") }):
 			then = "change the items' steps, and let the requests finish, first."
+		case slices.ContainsFunc(u, func(by string) bool { return strings.HasPrefix(by, "template ") }):
+			then = "change their steps and user data first."
 		}
 		return &ConflictError{Msg: "It is read by " + strings.Join(u, ", ") + ": " + then}
 	}
@@ -203,16 +218,20 @@ func varsLoose(expr string) bool {
 	return loose
 }
 
-// checkVariableRefs checks, to publish a composite, that the shared
-// variables its steps read exist.
+// checkVariableRefs checks, to publish a version, that the shared variables
+// its composite steps read exist, and that those whose file its user data
+// reads hold one.
 func (s *Service) checkVariableRefs(ctx context.Context, d api.CatalogVersionDefinition, prefix string) ([]api.FieldError, error) {
 	raw, _ := json.Marshal(d.Blueprint)
 	b, err := blueprint.Parse(raw)
-	if err != nil || len(b.Steps) == 0 {
+	if err != nil {
 		return nil, nil
 	}
+	errs, err := s.checkFileRefs(ctx, b.Files(), prefix+"/blueprint")
+	if err != nil || len(b.Steps) == 0 {
+		return errs, err
+	}
 	var values map[string]any
-	var errs []api.FieldError
 	var failed error
 	eachStep(b, prefix+"/blueprint", func(st blueprint.CompositeStep, at string) {
 		text, _ := json.Marshal(withoutChildren(st))
@@ -236,6 +255,27 @@ func (s *Service) checkVariableRefs(ctx context.Context, d api.CatalogVersionDef
 		}
 	})
 	return errs, failed
+}
+
+// checkFileRefs checks that the shared variables whose file user data
+// reads, under ptr, hold one.
+func (s *Service) checkFileRefs(ctx context.Context, refs []blueprint.SecretRef, ptr string) ([]api.FieldError, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	list, err := s.Store.Variables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var errs []api.FieldError
+	for _, r := range refs {
+		if slices.ContainsFunc(list, func(v store.Variable) bool { return v.HoldsFile() && v.Group+"."+v.Name == r.Name }) {
+			continue
+		}
+		errs = append(errs, fieldErr(ptr+r.Pointer, "unknown_variable",
+			fmt.Sprintf("Line %d: there is no variable %s that holds a file: upload it under Administration > Variables.", r.Line, r.Name)))
+	}
+	return errs, nil
 }
 
 // withoutChildren is a step without the steps of its parallel group, its

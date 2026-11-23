@@ -81,14 +81,14 @@ func TestCloudInit(t *testing.T) {
 		return "", errors.New("There is no secret " + name)
 	}
 	user, err := renderUserData("#cloud-config\nfqdn: {{ .vm.fqdn }}\nfinal_message: {{ .inputs.role }}\npassword: {{ secret \"app-pw\" | json }}",
-		map[string]any{"vm": map[string]any{"fqdn": "web01.corp.example"}, "inputs": map[string]any{"role": "web"}}, secret)
+		map[string]any{"vm": map[string]any{"fqdn": "web01.corp.example"}, "inputs": map[string]any{"role": "web"}}, secret, nil)
 	if err != nil || user != "#cloud-config\nfqdn: web01.corp.example\nfinal_message: web\npassword: \"p\\\"w: 1\"" {
 		t.Fatalf("user data = %q, %v", user, err)
 	}
-	if _, err := renderUserData("{{ .inputs.missing }}", map[string]any{"inputs": map[string]any{}}, secret); err == nil || !strings.Contains(err.Error(), "missing") {
+	if _, err := renderUserData("{{ .inputs.missing }}", map[string]any{"inputs": map[string]any{}}, secret, nil); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("a missing input = %v", err)
 	}
-	if _, err := renderUserData(`{{ secret "gone" }}`, nil, secret); err == nil || !strings.Contains(err.Error(), "There is no secret gone") {
+	if _, err := renderUserData(`{{ secret "gone" }}`, nil, secret, nil); err == nil || !strings.Contains(err.Error(), "There is no secret gone") {
 		t.Fatalf("a missing secret = %v", err)
 	}
 	gi := guestInfo(raw, user)
@@ -135,7 +135,7 @@ resources:
 		raw, _ := json.Marshal(map[string]any{"app": app, "port": 1048576})
 		inputs := map[string]any{}
 		_ = json.Unmarshal(raw, &inputs)
-		out, err := renderUserData(ud, map[string]any{"vm": map[string]any{"name": "web01"}, "inputs": inputs}, nil)
+		out, err := renderUserData(ud, map[string]any{"vm": map[string]any{"name": "web01"}, "inputs": inputs}, nil, nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ud, err)
 		}

@@ -3060,6 +3060,24 @@ func (e ValueSourceKind) Valid() bool {
 	}
 }
 
+// Defines values for VariableType.
+const (
+	VariableTypeFile  VariableType = "file"
+	VariableTypeValue VariableType = "value"
+)
+
+// Valid indicates whether the value is a known member of the VariableType enum.
+func (e VariableType) Valid() bool {
+	switch e {
+	case VariableTypeFile:
+		return true
+	case VariableTypeValue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ViewList.
 const (
 	ViewListDeployments ViewList = "deployments"
@@ -11302,8 +11320,9 @@ type ValueSourceKind string
 
 // Variable defines model for Variable.
 type Variable struct {
-	CreatedAt   time.Time `json:"created_at"`
-	Description string    `json:"description"`
+	CreatedAt   time.Time     `json:"created_at"`
+	Description string        `json:"description"`
+	File        *VariableFile `json:"file,omitempty"`
 
 	// Group Examples: network
 	Group string `json:"group"`
@@ -11314,20 +11333,24 @@ type Variable struct {
 	Key string `json:"key"`
 
 	// Name Examples: dns_servers
-	Name      string    `json:"name"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Name string `json:"name"`
+
+	// Type `value`: it holds `value`; `file`: a text file, which `file` describes.
+	Type      VariableType `json:"type"`
+	UpdatedAt time.Time    `json:"updated_at"`
 
 	// UpdatedBy Who changed it last.
 	UpdatedBy *string `json:"updated_by,omitempty"`
 
-	// UsedBy The items whose draft or published version reads it (`item <slug>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed.
+	// UsedBy The items whose draft or published version reads it (`item <slug>`), the VM templates whose user data reads its file (`template <key>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed.
 	UsedBy []string `json:"used_by"`
 
-	// Value Text, a number, true or false, a list or an object; never null.
-	//
-	// Examples: ["10.20.0.53","10.20.0.54"]
+	// Value What steps read as `vars.<group>.<name>`. A file's is its `name`, `size`, `sha256` and `content_type`: steps read its content as `.text` besides.
 	Value VariableValue `json:"value"`
 }
+
+// VariableType `value`: it holds `value`; `file`: a text file, which `file` describes.
+type VariableType string
 
 // VariableCreate defines model for VariableCreate.
 type VariableCreate struct {
@@ -11347,6 +11370,31 @@ type VariableCreate struct {
 	//
 	// Examples: ["10.20.0.53","10.20.0.54"]
 	Value VariableValue `json:"value"`
+}
+
+// VariableFile defines model for VariableFile.
+type VariableFile struct {
+	// ContentType Told by its name's extension; text/plain when rvav doesn't know it.
+	//
+	// Examples: text/plain
+	ContentType string `json:"content_type"`
+
+	// Name Examples: motd.txt
+	Name string `json:"name"`
+
+	// Sha256 Its content's SHA-256, in hex.
+	Sha256 string `json:"sha256"`
+
+	// Size In bytes.
+	Size int64 `json:"size"`
+}
+
+// VariableFileUpload defines model for VariableFileUpload.
+type VariableFileUpload struct {
+	Description *string `json:"description,omitempty"`
+
+	// File The file, with its name. A text file (UTF-8) of 256 KiB at most.
+	File *openapi_types.File `json:"file,omitempty"`
 }
 
 // VariableList defines model for VariableList.
@@ -13155,6 +13203,9 @@ type CreateVariableJSONRequestBody = VariableCreate
 
 // UpdateVariableJSONRequestBody defines body for UpdateVariable for application/json ContentType.
 type UpdateVariableJSONRequestBody = VariableUpdate
+
+// PutVariableFileMultipartRequestBody defines body for PutVariableFile for multipart/form-data ContentType.
+type PutVariableFileMultipartRequestBody = VariableFileUpload
 
 // CreateVCenterJSONRequestBody defines body for CreateVCenter for application/json ContentType.
 type CreateVCenterJSONRequestBody = VCenterWrite
@@ -16923,9 +16974,13 @@ type ClientInterface interface {
 	// Named values that aren't secret, which composite steps and conditions
 	// read as `vars.<group>.<name>` each time they run, as vRO's
 	// configuration elements: written so, not by index nor a group whole,
-	// which saving refuses. Each with the items that read it. Reading them
-	// needs `catalog.manage` or `extensibility.read` (auditors) for all of
-	// rvav; changing them, `catalog.manage`.
+	// which saving refuses. Each with the items that read it. A variable
+	// may hold a text file instead (`type: file`), uploaded with
+	// `PUT /admin/variables/{key}/file`: steps read it as
+	// `{name, size, sha256, content_type, text}`, and cloud-init user data
+	// as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+	// or `extensibility.read` (auditors) for all of rvav; changing them,
+	// `catalog.manage`.
 	//
 	// Corresponds with GET /admin/variables (the `ListVariables` operationId).
 	ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16969,7 +17024,8 @@ type ClientInterface interface {
 	// UpdateVariableWithBody Change a shared variable's value (its group and name stay)
 	//
 	// Steps that run from then on read the new value, in requests already
-	// running too. Audited with the value it had.
+	// running too. Audited with the value it had. A variable that holds a
+	// file is changed by uploading its new file (409 here).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -16979,12 +17035,39 @@ type ClientInterface interface {
 	// UpdateVariable Change a shared variable's value (its group and name stay)
 	//
 	// Steps that run from then on read the new value, in requests already
-	// running too. Audited with the value it had.
+	// running too. Audited with the value it had. A variable that holds a
+	// file is changed by uploading its new file (409 here).
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
 	UpdateVariable(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DownloadVariableFile Download the file a shared variable holds
+	//
+	// Always a download, never shown in the browser. 404 for a variable
+	// that holds a value.
+	//
+	// Corresponds with GET /admin/variables/{key}/file (the `DownloadVariableFile` operationId).
+	DownloadVariableFile(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutVariableFileWithBody Add a shared variable that holds a file, or replace its file
+	//
+	// A text file (UTF-8) of 256 KiB at most, not empty, sent as
+	// `multipart/form-data`: its `file` part, with the file's name, and
+	// a `description`. Adding one needs the file; replacing it, the file
+	// or a description, which alone changes only that. Not for keys: a
+	// file that holds a private key is refused (`secret`), as a group or
+	// a name that says it holds a password, a token or a key, and those
+	// are stored as secrets. Steps that run from then on read the new
+	// file, in requests already running too. Audited with the file's
+	// name, size and SHA-256, not its content. 409 for a variable that
+	// holds a value. Needs `catalog.manage` for all of rvav.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/variables/{key}/file (the `PutVariableFile` operationId).
+	PutVariableFileWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVCenters The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
 	//
@@ -24011,9 +24094,13 @@ func (c *Client) UpdateVmTemplate(ctx context.Context, key KeyPath, body UpdateV
 // Named values that aren't secret, which composite steps and conditions
 // read as `vars.<group>.<name>` each time they run, as vRO's
 // configuration elements: written so, not by index nor a group whole,
-// which saving refuses. Each with the items that read it. Reading them
-// needs `catalog.manage` or `extensibility.read` (auditors) for all of
-// rvav; changing them, `catalog.manage`.
+// which saving refuses. Each with the items that read it. A variable
+// may hold a text file instead (`type: file`), uploaded with
+// `PUT /admin/variables/{key}/file`: steps read it as
+// `{name, size, sha256, content_type, text}`, and cloud-init user data
+// as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+// or `extensibility.read` (auditors) for all of rvav; changing them,
+// `catalog.manage`.
 //
 // Corresponds with GET /admin/variables (the `ListVariables` operationId).
 func (c *Client) ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -24107,7 +24194,8 @@ func (c *Client) GetVariable(ctx context.Context, key string, reqEditors ...Requ
 // UpdateVariableWithBody Change a shared variable's value (its group and name stay)
 //
 // Steps that run from then on read the new value, in requests already
-// running too. Audited with the value it had.
+// running too. Audited with the value it had. A variable that holds a
+// file is changed by uploading its new file (409 here).
 //
 // Takes any type of body and a specified content type.
 //
@@ -24127,13 +24215,60 @@ func (c *Client) UpdateVariableWithBody(ctx context.Context, key string, content
 // UpdateVariable Change a shared variable's value (its group and name stay)
 //
 // Steps that run from then on read the new value, in requests already
-// running too. Audited with the value it had.
+// running too. Audited with the value it had. A variable that holds a
+// file is changed by uploading its new file (409 here).
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
 func (c *Client) UpdateVariable(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateVariableRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DownloadVariableFile Download the file a shared variable holds
+//
+// Always a download, never shown in the browser. 404 for a variable
+// that holds a value.
+//
+// Corresponds with GET /admin/variables/{key}/file (the `DownloadVariableFile` operationId).
+func (c *Client) DownloadVariableFile(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadVariableFileRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutVariableFileWithBody Add a shared variable that holds a file, or replace its file
+//
+// A text file (UTF-8) of 256 KiB at most, not empty, sent as
+// `multipart/form-data`: its `file` part, with the file's name, and
+// a `description`. Adding one needs the file; replacing it, the file
+// or a description, which alone changes only that. Not for keys: a
+// file that holds a private key is refused (`secret`), as a group or
+// a name that says it holds a password, a token or a key, and those
+// are stored as secrets. Steps that run from then on read the new
+// file, in requests already running too. Audited with the file's
+// name, size and SHA-256, not its content. 409 for a variable that
+// holds a value. Needs `catalog.manage` for all of rvav.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/variables/{key}/file (the `PutVariableFile` operationId).
+func (c *Client) PutVariableFileWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutVariableFileRequestWithBody(c.Server, key, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -35623,6 +35758,76 @@ func NewUpdateVariableRequestWithBody(server string, key string, contentType str
 	return req, nil
 }
 
+// NewDownloadVariableFileRequest constructs an http.Request for the DownloadVariableFile method
+func NewDownloadVariableFileRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables/%s/file", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutVariableFileRequestWithBody constructs an http.Request for the PutVariableFile method, with any body, and a specified content type
+func NewPutVariableFileRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables/%s/file", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListVCentersRequest constructs an http.Request for the ListVCenters method
 func NewListVCentersRequest(server string) (*http.Request, error) {
 	var err error
@@ -44055,9 +44260,13 @@ type ClientWithResponsesInterface interface {
 	// Named values that aren't secret, which composite steps and conditions
 	// read as `vars.<group>.<name>` each time they run, as vRO's
 	// configuration elements: written so, not by index nor a group whole,
-	// which saving refuses. Each with the items that read it. Reading them
-	// needs `catalog.manage` or `extensibility.read` (auditors) for all of
-	// rvav; changing them, `catalog.manage`.
+	// which saving refuses. Each with the items that read it. A variable
+	// may hold a text file instead (`type: file`), uploaded with
+	// `PUT /admin/variables/{key}/file`: steps read it as
+	// `{name, size, sha256, content_type, text}`, and cloud-init user data
+	// as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+	// or `extensibility.read` (auditors) for all of rvav; changing them,
+	// `catalog.manage`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -44107,7 +44316,8 @@ type ClientWithResponsesInterface interface {
 	// UpdateVariableWithBodyWithResponse Change a shared variable's value (its group and name stay)
 	//
 	// Steps that run from then on read the new value, in requests already
-	// running too. Audited with the value it had.
+	// running too. Audited with the value it had. A variable that holds a
+	// file is changed by uploading its new file (409 here).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -44117,12 +44327,41 @@ type ClientWithResponsesInterface interface {
 	// UpdateVariableWithResponse Change a shared variable's value (its group and name stay)
 	//
 	// Steps that run from then on read the new value, in requests already
-	// running too. Audited with the value it had.
+	// running too. Audited with the value it had. A variable that holds a
+	// file is changed by uploading its new file (409 here).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
 	UpdateVariableWithResponse(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVariableResponse, error)
+
+	// DownloadVariableFileWithResponse Download the file a shared variable holds
+	//
+	// Always a download, never shown in the browser. 404 for a variable
+	// that holds a value.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/variables/{key}/file (the `DownloadVariableFile` operationId).
+	DownloadVariableFileWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DownloadVariableFileResponse, error)
+
+	// PutVariableFileWithBodyWithResponse Add a shared variable that holds a file, or replace its file
+	//
+	// A text file (UTF-8) of 256 KiB at most, not empty, sent as
+	// `multipart/form-data`: its `file` part, with the file's name, and
+	// a `description`. Adding one needs the file; replacing it, the file
+	// or a description, which alone changes only that. Not for keys: a
+	// file that holds a private key is refused (`secret`), as a group or
+	// a name that says it holds a password, a token or a key, and those
+	// are stored as secrets. Steps that run from then on read the new
+	// file, in requests already running too. Audited with the file's
+	// name, size and SHA-256, not its content. 409 for a variable that
+	// holds a value. Needs `catalog.manage` for all of rvav.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/variables/{key}/file (the `PutVariableFile` operationId).
+	PutVariableFileWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutVariableFileResponse, error)
 
 	// ListVCentersWithResponse The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
 	//
@@ -59089,6 +59328,8 @@ type UpdateVariableResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
 }
@@ -59111,6 +59352,11 @@ func (r UpdateVariableResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r UpdateVariableResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateVariableResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -59141,6 +59387,165 @@ func (r UpdateVariableResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DownloadVariableFileResponse200Headers the declared response headers of an HTTP 200 response for DownloadVariableFile
+type DownloadVariableFileResponse200Headers struct {
+	ContentDisposition *string
+}
+
+type DownloadVariableFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *DownloadVariableFileResponse200Headers
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DownloadVariableFileResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DownloadVariableFileResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DownloadVariableFileResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DownloadVariableFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadVariableFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadVariableFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DownloadVariableFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutVariableFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Variable
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Variable
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutVariableFileResponse) GetJSON200() *Variable {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r PutVariableFileResponse) GetJSON201() *Variable {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PutVariableFileResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r PutVariableFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutVariableFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutVariableFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutVariableFileResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -70720,9 +71125,13 @@ func (c *ClientWithResponses) UpdateVmTemplateWithResponse(ctx context.Context, 
 // Named values that aren't secret, which composite steps and conditions
 // read as `vars.<group>.<name>` each time they run, as vRO's
 // configuration elements: written so, not by index nor a group whole,
-// which saving refuses. Each with the items that read it. Reading them
-// needs `catalog.manage` or `extensibility.read` (auditors) for all of
-// rvav; changing them, `catalog.manage`.
+// which saving refuses. Each with the items that read it. A variable
+// may hold a text file instead (`type: file`), uploaded with
+// `PUT /admin/variables/{key}/file`: steps read it as
+// `{name, size, sha256, content_type, text}`, and cloud-init user data
+// as `{{ file "<group>.<name>" }}`. Reading them needs `catalog.manage`
+// or `extensibility.read` (auditors) for all of rvav; changing them,
+// `catalog.manage`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -70802,7 +71211,8 @@ func (c *ClientWithResponses) GetVariableWithResponse(ctx context.Context, key s
 // UpdateVariableWithBodyWithResponse Change a shared variable's value (its group and name stay)
 //
 // Steps that run from then on read the new value, in requests already
-// running too. Audited with the value it had.
+// running too. Audited with the value it had. A variable that holds a
+// file is changed by uploading its new file (409 here).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -70818,7 +71228,8 @@ func (c *ClientWithResponses) UpdateVariableWithBodyWithResponse(ctx context.Con
 // UpdateVariableWithResponse Change a shared variable's value (its group and name stay)
 //
 // Steps that run from then on read the new value, in requests already
-// running too. Audited with the value it had.
+// running too. Audited with the value it had. A variable that holds a
+// file is changed by uploading its new file (409 here).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -70829,6 +71240,46 @@ func (c *ClientWithResponses) UpdateVariableWithResponse(ctx context.Context, ke
 		return nil, err
 	}
 	return ParseUpdateVariableResponse(rsp)
+}
+
+// DownloadVariableFileWithResponse Download the file a shared variable holds
+//
+// Always a download, never shown in the browser. 404 for a variable
+// that holds a value.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/variables/{key}/file (the `DownloadVariableFile` operationId).
+func (c *ClientWithResponses) DownloadVariableFileWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DownloadVariableFileResponse, error) {
+	rsp, err := c.DownloadVariableFile(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadVariableFileResponse(rsp)
+}
+
+// PutVariableFileWithBodyWithResponse Add a shared variable that holds a file, or replace its file
+//
+// A text file (UTF-8) of 256 KiB at most, not empty, sent as
+// `multipart/form-data`: its `file` part, with the file's name, and
+// a `description`. Adding one needs the file; replacing it, the file
+// or a description, which alone changes only that. Not for keys: a
+// file that holds a private key is refused (`secret`), as a group or
+// a name that says it holds a password, a token or a key, and those
+// are stored as secrets. Steps that run from then on read the new
+// file, in requests already running too. Audited with the file's
+// name, size and SHA-256, not its content. 409 for a variable that
+// holds a value. Needs `catalog.manage` for all of rvav.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/variables/{key}/file (the `PutVariableFile` operationId).
+func (c *ClientWithResponses) PutVariableFileWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutVariableFileResponse, error) {
+	rsp, err := c.PutVariableFileWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutVariableFileResponse(rsp)
 }
 
 // ListVCentersWithResponse The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
@@ -83714,6 +84165,148 @@ func ParseUpdateVariableResponse(rsp *http.Response) (*UpdateVariableResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadVariableFileResponse parses an HTTP response from a DownloadVariableFileWithResponse call
+func ParseDownloadVariableFileResponse(rsp *http.Response) (*DownloadVariableFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadVariableFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers DownloadVariableFileResponse200Headers
+		if values := rsp.Header.Values("Content-Disposition"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Disposition", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentDisposition = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutVariableFileResponse parses an HTTP response from a PutVariableFileWithResponse call
+func ParsePutVariableFileResponse(rsp *http.Response) (*PutVariableFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutVariableFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Variable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Variable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed

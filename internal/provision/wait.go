@@ -239,7 +239,7 @@ func (a *Activities) waitUntil(ctx context.Context, in WaitInput) (time.Time, er
 	if err != nil {
 		return time.Time{}, err
 	}
-	vars, err := a.stepVars(ctx, in.RequestID, steps)
+	vars, err := a.stepVars(ctx, in.RequestID, steps, in.Wait.Until)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -369,7 +369,7 @@ func (a *Activities) CheckPoll(ctx context.Context, in PollInput) (PollCheck, er
 		return PollCheck{}, permanent("The answer can't be read: %v", err)
 	}
 	steps[strings.TrimPrefix(in.StepKey, KeyStep)] = own
-	vars, err := a.stepVars(ctx, in.RequestID, steps)
+	vars, err := a.stepVars(ctx, in.RequestID, steps, in.Poll.Until)
 	if err != nil {
 		return PollCheck{}, err
 	}
