@@ -66,6 +66,17 @@ describe("Catalog items", () => {
     await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "Team share");
     await u.type(within(sheet).getByRole("textbox", { name: "Slug" }), "team-share");
     await u.type(within(sheet).getByRole("textbox", { name: "Summary" }), "A file share for a team.");
+    const category = within(sheet).getByRole("combobox", { name: "Category" });
+    expect(category).toHaveTextContent("Select…");
+
+    // Without a category, the save is refused at the field, which takes the focus.
+    await u.click(within(sheet).getByRole("button", { name: "Create item" }));
+    expect(await within(sheet).findByText("Choose a category.")).toBeInTheDocument();
+    expect(category).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(category).toHaveFocus());
+
+    await u.click(category);
+    await u.click(await screen.findByRole("option", { name: "Databases" }));
     await u.click(within(sheet).getByRole("button", { name: "Create item" }));
     expect(await screen.findByText("Team share created, with a draft 1.0")).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/catalog-items/team-share"));

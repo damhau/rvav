@@ -81,6 +81,7 @@ interface Words {
   name: string;
   slug: string;
   summary: string;
+  category: string;
   type: string;
   vmType: string;
   create: string;
@@ -109,6 +110,7 @@ const english: Words = {
   name: "Name",
   slug: "Slug",
   summary: "Summary",
+  category: "Category",
   type: "Type",
   vmType: "VM blueprint",
   create: "Create",
@@ -137,6 +139,7 @@ const french: Words = {
   name: "Nom",
   slug: "Slug",
   summary: "Résumé",
+  category: "Catégorie",
   type: "Type",
   vmType: "Blueprint de VM",
   create: "Créer",
@@ -183,6 +186,8 @@ async function buildOnCanvas(page: Page, w: Words, slug: string) {
   await page.keyboard.type(slug);
   await tabTo(page, create.getByRole("textbox", { name: w.summary }));
   await page.keyboard.type("A web tier and its database.");
+  await tabTo(page, create.getByRole("combobox", { name: w.category }));
+  await choose(page, "Compute");
   await tabTo(page, create.getByRole("combobox", { name: w.type }));
   await choose(page, w.vmType);
   await tabTo(page, create.getByRole("button", { name: w.create }), "Tab");
@@ -293,6 +298,8 @@ async function designed(page: Page, slug: string, yaml = builtYaml) {
   await create.getByRole("textbox", { name: "Summary" }).fill("A web tier and its database.");
   await create.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: "VM blueprint" }).click();
+  await create.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await create.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: new RegExp(`^Definition of ${item}`) });
@@ -353,6 +360,8 @@ test("a new item's VM sized in its details, refused to publish without its vCPUs
   await page.keyboard.type("sized-vm");
   await tabTo(page, create.getByRole("textbox", { name: "Summary" }));
   await page.keyboard.type("One VM, sized in the designer.");
+  await tabTo(page, create.getByRole("combobox", { name: "Category" }));
+  await choose(page, "Compute");
   await tabTo(page, create.getByRole("combobox", { name: "Type" }));
   await choose(page, "VM blueprint");
   await tabTo(page, create.getByRole("button", { name: "Create" }), "Tab");

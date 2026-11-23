@@ -208,9 +208,17 @@ func TestCatalogEntitlementsCategoriesYAML(t *testing.T) {
 		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server", admin, nil, 200, &rhel)
 		var published api.CatalogItemVersionDetail
 		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/versions/"+rhel.PublishedVersion.Id, admin, nil, 200, &published)
+		small := api.CatalogItemCreate{Slug: "linux-small", Name: "Small Linux VM",
+			Summary: "A small VM.", Type: api.VmBlueprint, Icon: new("cpu"), Definition: &published.Definition}
+		var uncategorised struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/items", admin, small, 422, &uncategorised)
+		if len(uncategorised.Errors) != 1 || uncategorised.Errors[0].Field != "/category" || deref(uncategorised.Errors[0].Code) != "required" ||
+			uncategorised.Errors[0].Message != "Choose a category." {
+			t.Fatalf("an item without a category = %+v", uncategorised.Errors)
+		}
 		var item api.AdminCatalogItem
-		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "linux-small", Name: "Small Linux VM",
-			Summary: "A small VM.", Category: "compute", Type: api.VmBlueprint, Icon: new("cpu"), Definition: &published.Definition}, 201, &item)
+		small.Category = "compute"
+		h.json("POST", "/api/v1/admin/catalog/items", admin, small, 201, &item)
 		h.json("POST", "/api/v1/admin/catalog/items/linux-small/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
 		if inCatalog("prj_web", "linux-small") {
 			t.Fatal("open to a project before any entitlement")

@@ -106,6 +106,7 @@ test("a form library validation refuses a request on its input, then lets it thr
   await typeInto(dialog.getByRole("textbox", { name: "Name" }), "App host");
   await typeInto(dialog.getByRole("textbox", { name: "Slug" }), "app-host");
   await typeInto(dialog.getByRole("textbox", { name: "Summary" }), "A host whose name starts with app-.");
+  await chooseIn(page, dialog.getByRole("combobox", { name: "Category" }), "Compute", { focus: true });
   await dialog.getByRole("button", { name: "Create item" }).press("Enter");
   await page.getByRole("tab", { name: "Definition" }).press("Enter");
   const editor = page.getByRole("textbox", { name: "Definition of App host 1.0" });

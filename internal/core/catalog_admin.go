@@ -127,7 +127,9 @@ func (s *Service) CreateCatalogItem(ctx context.Context, p *auth.Principal, c ap
 	if strings.TrimSpace(c.Summary) == "" {
 		errs = append(errs, fieldErr("/summary", "required", "Say in a line what the item gives."))
 	}
-	if ok, err := s.Store.CategoryExists(ctx, c.Category); err != nil {
+	if c.Category == "" {
+		errs = append(errs, fieldErr("/category", "required", "Choose a category."))
+	} else if ok, err := s.Store.CategoryExists(ctx, c.Category); err != nil {
 		return api.AdminCatalogItem{}, err
 	} else if !ok {
 		errs = append(errs, fieldErr("/category", "unknown", fmt.Sprintf("There is no category %q.", c.Category)))

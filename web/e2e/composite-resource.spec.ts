@@ -31,6 +31,8 @@ test("a custom resource step, by its type, in the deployment of the VM step it n
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Two servers behind a load balancer.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name: "Balanced pair" })).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();

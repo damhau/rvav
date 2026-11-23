@@ -62,6 +62,8 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await dialog.getByRole("textbox", { name: "Name" }).fill("Every field");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("every-field");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("One field of each type.");
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Form designer" }).click();
 

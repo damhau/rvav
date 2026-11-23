@@ -63,6 +63,8 @@ test("create an item and a category", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu mini");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("ubuntu-mini");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A small Ubuntu VM.");
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name: "Ubuntu mini" })).toBeVisible();
   await expect(page.getByText("Draft 1.0").first()).toBeVisible();
@@ -89,6 +91,8 @@ test("build a small form in the designer", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Team share");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("team-share");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A file share for a team.");
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Form designer" }).click();
 
@@ -166,6 +170,8 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu web");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("ubuntu-web");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Ubuntu with nginx and a backup policy.");
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
 
   // A dropdown from the CMDB, tested as a member of Web Platform.

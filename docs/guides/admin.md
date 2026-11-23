@@ -1617,7 +1617,8 @@ An item is a form and a blueprint
 - **a custom workflow**, run by your own worker.
 
 **New item** makes the item's first draft: a form with one **Name** input,
-and a blueprint for its kind. A VM blueprint's VM has 2 vCPUs and 4 GB of
+and a blueprint for its kind. Choose its **Category**, which the catalog
+groups it under: rvav refuses an item without one, at that field. A VM blueprint's VM has 2 vCPUs and 4 GB of
 memory (`bindings.vcpu`, `bindings.memory_gb`): change them on its
 **Definition** tab, or bind them to a size input
 ([VM blueprints](../service-catalog.md#vm-blueprints)). To publish a VM

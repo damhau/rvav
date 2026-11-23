@@ -91,6 +91,8 @@ async function designed(page: Page, yaml = definition) {
   await create.getByRole("textbox", { name: "Summary" }).fill("Asks the requester which backup policy a VM needs.");
   await create.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: "Composite" }).click();
+  await create.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await create.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: new RegExp(`^Definition of ${item}`) });
@@ -157,6 +159,8 @@ test("rebuilt on the canvas with the keyboard only: the requester asked, the ans
   await page.keyboard.type("ask-requester");
   await page.keyboard.press("Tab");
   await page.keyboard.type("Asks for a backup policy.");
+  await tabTo(page, create.getByRole("combobox", { name: "Category" }));
+  await choose(page, "Compute");
   await tabTo(page, create.getByRole("combobox", { name: "Type" }));
   await choose(page, "Composite");
   await tabTo(page, create.getByRole("button", { name: "Create item" }), "Tab");

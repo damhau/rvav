@@ -71,7 +71,7 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
     slug: "",
     name: "",
     summary: "",
-    category: "compute",
+    category: "",
     type: "vm_blueprint" as CatalogItemType,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});

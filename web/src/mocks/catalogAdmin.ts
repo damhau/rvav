@@ -1276,10 +1276,17 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       await wait();
       const c = (await request.json()) as S["CatalogItemCreate"];
       if (find(c.slug)) return problem(409, "Conflict", undefined, `The slug "${c.slug}" is taken.`);
+      const errors: S["FieldError"][] = [];
       if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(c.slug))
-        return problem(422, "Some inputs need attention", [
-          { field: "/slug", code: "pattern", message: "Lower case letters, digits and dashes, 2 to 63 characters." },
-        ]);
+        errors.push({
+          field: "/slug",
+          code: "pattern",
+          message: "Lower case letters, digits and dashes, 2 to 63 characters.",
+        });
+      if (!c.category) errors.push({ field: "/category", code: "required", message: "Choose a category." });
+      else if (!db.categories.some((x) => x.key === c.category))
+        errors.push({ field: "/category", code: "unknown", message: `There is no category "${c.category}".` });
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
       const item: StoredItem = {
         id: uid("itm"),
         slug: c.slug,

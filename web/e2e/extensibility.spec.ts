@@ -148,6 +148,8 @@ test("a composite item's steps, checked while edited and when saved", async ({ p
   await dialog.getByRole("textbox", { name: "Slug" }).fill("vm-db-user");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A VM, its database user and monitoring.");
   await pick(page, dialog, "Type", "Composite");
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
 
   await page.getByRole("tab", { name: "Definition" }).click();

@@ -171,6 +171,8 @@ test("a composite with a person, a branch and a signal, on the canvas and in its
   await dialog.getByRole("textbox", { name: "Résumé" }).fill("Attend le demandeur, puis un signal.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("combobox", { name: "Catégorie" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Créer l'élément" }).click();
   await expect(page.getByRole("heading", { name: "Mise en service", level: 1 })).toBeVisible();
   await tab(page, "Définition");

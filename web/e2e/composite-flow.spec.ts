@@ -79,6 +79,8 @@ test("the graph is fitted again when typing adds a catch path or an error handle
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Steps, then their catch paths.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: /^Definition of Fitted steps/ });
@@ -128,6 +130,8 @@ test("a publish refused for shared variables that don't exist says each on its s
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Reads variables nobody added.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: /^Definition of Shared reads/ });
@@ -185,6 +189,8 @@ test("a loop, a catch path, the error handler and a wait for a signal, from the 
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Waits for the board, then registers.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("combobox", { name: "Category" }).click();
+  await page.getByRole("option", { name: "Compute" }).click();
   await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name: "Register hosts" })).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
